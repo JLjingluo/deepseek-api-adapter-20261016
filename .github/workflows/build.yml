@@ -1,0 +1,40 @@
+name: Build iOS adapter
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test SSE and endpoint handling
+        run: |
+          mkdir -p build
+          xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
+            Sources/DSStreamDecoder.m Sources/DSAPIConfiguration.m Tests/StreamTests.m \
+            -framework Foundation -framework Security -o build/StreamTests
+          build/StreamTests
+      - name: Compile iOS arm64 library
+        run: |
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun --sdk iphoneos clang -arch arm64 -isysroot "$SDK" \
+            -miphoneos-version-min=18.0 -fobjc-arc -fmodules -O2 -Wall -Wextra \
+            -Wno-unused-parameter -dynamiclib -install_name @rpath/DSAPIAdapter.dylib \
+            Sources/*.m -framework Foundation -framework UIKit -framework Security \
+            -o build/DSAPIAdapter.dylib
+          codesign --force --sign - build/DSAPIAdapter.dylib
+          file build/DSAPIAdapter.dylib
+          shasum -a 256 build/DSAPIAdapter.dylib > build/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DSAPIAdapter-arm64
+          path: |
+            build/DSAPIAdapter.dylib
+            build/SHA256SUMS
+          retention-days: 7

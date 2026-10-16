@@ -1,0 +1,9 @@
+build/
+*.ipa
+*.dylib
+*.app/
+.DS_Store
+*.p12
+*.mobileprovision
+.env*
+
