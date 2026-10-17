@@ -38,7 +38,7 @@ final class CaptureTests: XCTestCase {
         let input = app.textViews.firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 15), "Original chat input is missing")
         input.tap()
-        input.typeText("API 接入测试")
+        input.typeText("API integration test")
         Thread.sleep(forTimeInterval: 1)
         let sendNames = ["send", "Send", "Send message", "send_message", "发送", "发送消息"]
         let named = sendNames.map { app.buttons[$0].firstMatch }.first { $0.exists && $0.isHittable }
