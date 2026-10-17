@@ -3,7 +3,12 @@ import Foundation
 // Runtime lookup lets the installed application's own Decodable conformance
 // validate the local identity. No original application source is linked here.
 private func appType(_ name: String) -> (any Decodable.Type)? {
-    return _typeByName(name) as? any Decodable.Type
+    if let type = _typeByName(name) as? any Decodable.Type { return type }
+    let qualified = name.hasPrefix("DeepSeek_Chat.") ? String(name.dropFirst("DeepSeek_Chat.".count)) : name
+    let parts = qualified.split(separator: ".").map(String.init)
+    guard parts.count > 1, let leaf = parts.last else { return nil }
+    let namespaces = parts.dropLast().map { "\($0.utf8.count)\($0)O" }.joined()
+    return _typeByName("13DeepSeek_Chat" + namespaces + "\(leaf.utf8.count)\(leaf)V") as? any Decodable.Type
 }
 
 @_cdecl("DSAPICopyLocalUserData")
