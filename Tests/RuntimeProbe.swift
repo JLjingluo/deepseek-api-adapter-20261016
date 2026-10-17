@@ -67,6 +67,15 @@ public func runRuntimeProbe() {
             "hidden": view.isHidden, "frame": NSCoder.string(for: view.frame)]
         if let label = view as? UILabel { item["text"] = label.text ?? "" }
         if let button = view as? UIButton { item["title"] = button.title(for: .normal) ?? "" }
+        if let table = view as? UITableView {
+            item["delegate_class"] = table.delegate.map { NSStringFromClass(type(of: $0)) } ?? "none"
+            if let source = table.dataSource {
+                item["data_source_class"] = NSStringFromClass(type(of: source))
+                item["data_source_fields"] = Mirror(reflecting: source).children.map {
+                    "\($0.label ?? "unnamed"): \(String(reflecting: type(of: $0.value)))"
+                }
+            }
+        }
         if NSStringFromClass(type(of: view)).hasSuffix(".UserMessageCell") {
             let mirror = Mirror(reflecting: view)
             if let model = mirror.children.first(where: { $0.label == "currentMessage" })?.value {
@@ -99,6 +108,7 @@ public func runRuntimeProbe() {
         "speech_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechStatus") ?? "not started",
         "last_speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastSpeechVoice") ?? "not selected",
         "last_voice_demo": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastVoiceDemo") ?? [:],
+        "usage_snapshot": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.usage.v1") ?? [:],
         "observed_native_client_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.observedNativeClientStatus") ?? "not observed",
         "actual_wire_valid": Dictionary(uniqueKeysWithValues: ["ready", "title", "delta", "finish"].map {
             ($0, UserDefaults.standard.object(forKey: "DSAPIAdapter.actualWireValid." + $0) ?? "not recorded")

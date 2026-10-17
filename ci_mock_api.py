@@ -55,8 +55,10 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
                 self.send_error(400)
                 return
             messages = body.get('messages', [])
+            cancel_case=bool(messages and messages[-1].get('content') == 'API cancellation test')
             record = {'path': self.path, 'model': body.get('model'), 'stream': body.get('stream'),
                 'message_count': len(messages), 'roles': [m.get('role') for m in messages],
+                'scenario': 'cancel' if cancel_case else 'normal',
                 'dummy_authorization_valid': self.headers.get('Authorization') == 'Bearer ci-dummy-key'}
             with lock:
                 records.append(record)
@@ -69,18 +71,23 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             self.send_header('Connection', 'close')
             self.end_headers()
             try:
-                for index, text in enumerate(['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']):
+                fragments=['取消前片段', '取消后不应出现'] if cancel_case else ['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']
+                for index, text in enumerate(fragments):
                     event = {'id': 'ci-mock', 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]}
                     wire = ('data: '+json.dumps(event, ensure_ascii=False)+'\n\n').encode()
                     # Deliberately fragment UTF-8 bytes and JSON across reads.
                     for offset in range(0, len(wire), 13):
                         self.wfile.write(wire[offset:offset+13])
                         self.wfile.flush()
-                    time.sleep(5 if index == 0 else 0.12)
-                self.wfile.write(b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+                    time.sleep((15 if cancel_case else 5) if index == 0 else 0.12)
+                self.wfile.write(b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":12,"total_tokens":17}}\n\ndata: [DONE]\n\n')
                 self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+                record['completed']=True
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                record['disconnected_before_finish']=True
+            finally:
+                with lock:
+                    (pathlib.Path(diagnostics)/'mock-api.json').write_text(json.dumps(records, indent=2))
             self.close_connection = True
 
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)

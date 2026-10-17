@@ -82,8 +82,61 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(received, "The original UI did not render the mock API reply")
         let readAloud = app.buttons["DSAPI.ReadAloud"].firstMatch
         XCTAssertTrue(readAloud.waitForExistence(timeout: 10), "Original read-aloud button is missing")
+        capture(app, "completed-native-reply")
+        #endif
+    }
+
+
+    private func openExistingTestChat() -> XCUIApplication {
+        let app = openNativeApp()
+        if !app.buttons["DSAPI.ReadAloud"].firstMatch.exists {
+            let sidebar = app.buttons["open_sidebar"].firstMatch
+            XCTAssertTrue(sidebar.waitForExistence(timeout: 10))
+            sidebar.tap()
+            let session = app.collectionViews.cells.containing(.staticText, identifier: "API integration test").firstMatch
+            XCTAssertTrue(session.waitForExistence(timeout: 10), "The completed native session was not persisted")
+            session.tap()
+        }
+        return app
+    }
+
+    func testNativeCancellation() throws {
+        #if DSAPI_MOCK_UI
+        let app = openExistingTestChat()
+        let followup=app.textViews.allElementsBoundByIndex.first {
+            $0.isHittable && $0.isEnabled && $0.frame.minY > app.frame.height*0.5 && (($0.value as? String) ?? "").isEmpty
+        }
+        XCTAssertNotNil(followup, "Native input could not be found for a second turn")
+        followup?.tap()
+        followup?.typeText("API cancellation test")
+        let send=app.buttons["Send"].firstMatch
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        send.tap()
+        let partial=app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "取消前片段", "取消前片段")).firstMatch
+        XCTAssertTrue(partial.waitForExistence(timeout: 15), "Second-turn stream did not begin")
+        capture(app, "before-stop-generation")
+        let stopNames=["Stop generating", "Stop", "停止生成", "停止"]
+        if let stop=stopNames.map({ app.buttons[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) {
+            stop.tap()
+        } else if let field=followup {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: field.frame.maxX-20, dy: field.frame.maxY+32)).tap()
+        }
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertTrue(partial.exists, "Stopping generation discarded the already rendered text")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "取消后不应出现")).firstMatch.exists)
+        capture(app, "after-stop-generation")
+        #endif
+    }
+
+    func testNativeReadAloud() throws {
+        #if DSAPI_MOCK_UI
+        let app = openExistingTestChat()
+        let readAloud = app.buttons["DSAPI.ReadAloud"].firstMatch
+        XCTAssertTrue(readAloud.waitForExistence(timeout: 10), "Original read-aloud button is missing")
         readAloud.tap()
-        Thread.sleep(forTimeInterval: 1)
+        let speaking=app.buttons.matching(NSPredicate(format: "identifier == %@ AND (label == %@ OR label == %@)",
+            "DSAPI.ReadAloud", "Stop reading", "停止朗读")).firstMatch
+        XCTAssertTrue(speaking.waitForExistence(timeout: 15), "Read-aloud did not reach its active state")
         capture(app, "read-aloud-started")
         print("DSAPI_READ_ALOUD_LABEL=\(readAloud.label)")
         readAloud.tap()
@@ -111,8 +164,8 @@ final class CaptureTests: XCTestCase {
                 capture(app, "original-settings")
                 print("DSAPI_SETTINGS_HIERARCHY_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_SETTINGS_HIERARCHY_END")
                 #if DSAPI_ADAPTER_UI
-                for name in ["Account management", "Account Management", "账号管理", "帳戶管理", "Log out", "Log Out", "退出登录", "登出", "Help & Feedback", "帮助与反馈", "Service agreement", "服务协议"] {
-                    XCTAssertFalse(app.staticTexts[name].firstMatch.isHittable, "Removed setting is still reachable: \(name)")
+                for name in ["Account settings", "Account Settings", "Account management", "Account Management", "账号管理", "帳戶管理", "帳號管理", "Log out", "Log Out", "退出登录", "登出", "Help & Feedback", "帮助与反馈", "Service agreement", "服务协议"] {
+                    XCTAssertFalse(app.staticTexts[name].firstMatch.exists, "Removed setting is still present: \(name)")
                 }
                 let usage = app.cells["DSAPI.Usage"].firstMatch
                 XCTAssertTrue(usage.exists && usage.isHittable, "Data controls must become API Usage")

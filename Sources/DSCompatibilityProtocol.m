@@ -168,6 +168,15 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         NSDictionary *session = [store session:sid];
         if (!session) { [self fail:@"本地会话不存在。"]; return; }
         [self json:@{@"cache_control":@"REPLACE",@"chat_messages":[store messages:sid],@"chat_session":session,@"cache_reset_at":@0}];
+    } else if ([path hasSuffix:@"/chat/message_feedback"]) {
+        NSNumber *mid=[p[@"message_id"] isKindOfClass:NSNumber.class] ? p[@"message_id"] : nil;
+        NSString *kind=[p[@"feedback_type"] isKindOfClass:NSString.class] ? [p[@"feedback_type"] uppercaseString] : nil;
+        if (!mid || (kind && ![@[@"GOOD",@"BAD",@"NONE"] containsObject:kind])) { [self fail:@"消息反馈无效。"]; return; }
+        if (!sid.length) for (NSDictionary *session in store.sessions)
+            if ([store message:mid session:session[@"id"]]) { sid=session[@"id"]; break; }
+        id feedback=kind && ![kind isEqual:@"NONE"] ? @{@"feedback_type":kind} : NSNull.null;
+        if (![store updateMessage:mid session:sid values:@{@"feedback":feedback} error:&error]) [self fail:error.localizedDescription];
+        else [self json:@{}];
     } else if ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"]) {
         [self chat:p];
     } else if ([path hasSuffix:@"/chat/stop_stream"]) {
@@ -282,8 +291,10 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     DSActiveStreams()[_assistantID.stringValue] = self;
     [self responseType:@"text/event-stream; charset=utf-8"];
     [self startHeartbeat];
-    [self event:@"ready" body:@{@"request_content":prompt ?: @"",@"model_type":p[@"model_type"] ?: @"default",
-        @"request_message_id":requestID ?: @0,@"response_message_id":_assistantID,@"ban_edit":@NO}];
+    NSMutableDictionary *ready=[@{@"model_type":p[@"model_type"] ?: @"default",
+        @"request_message_id":requestID ?: @0,@"response_message_id":_assistantID,@"ban_edit":@NO} mutableCopy];
+    if (prompt) ready[@"request_content"]=prompt;
+    [self event:@"ready" body:ready];
     [self sendMessageStatus:@"WIP"];
     [self event:@"title" body:@{@"content":[DSLocalStore.shared session:sid][@"title"] ?: @"新对话"}];
     _upstream = [[DSOpenAIClient alloc] initWithConfiguration:config];

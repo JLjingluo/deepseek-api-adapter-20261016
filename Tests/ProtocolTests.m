@@ -52,6 +52,11 @@ int main(void) {
         check([DSLocalStore.shared beginTurn:sid parent:nil prompt:@"你好" thinking:YES error:&error]!=nil,@"native turn persisted");
         NSDictionary *history=payload(request(@"/chat/history_messages",@{@"chat_session_id":sid}));
         check([history[@"chat_messages"] count]==2,@"history route returns persisted messages");
+        NSNumber *assistant=history[@"chat_messages"][1][@"message_id"];
+        payload(request(@"/chat/message_feedback",@{@"chat_session_id":sid,@"message_id":assistant,@"feedback_type":@"GOOD"}));
+        check([[[DSLocalStore.shared message:assistant session:sid][@"feedback"] objectForKey:@"feedback_type"] isEqual:@"GOOD"],@"native thumbs-up survives history reload");
+        payload(request(@"/chat/message_feedback",@{@"chat_session_id":sid,@"message_id":assistant,@"feedback_type":@"NONE"}));
+        check([DSLocalStore.shared message:assistant session:sid][@"feedback"]==NSNull.null,@"removing feedback clears the stored rating");
         for (NSDictionary *message in history[@"chat_messages"]) check([message[@"quasi_status"] isKindOfClass:NSString.class],@"native mandatory enum is not null");
         NSDictionary *settings=payload(request(@"/client/settings",@{}));
         check([settings[@"settings"] isKindOfClass:NSDictionary.class],@"native settings collection is a map");

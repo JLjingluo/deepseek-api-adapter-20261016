@@ -14,7 +14,7 @@ static CGFloat (*originalHeight)(id,SEL,UITableView *,NSIndexPath *);
 static CGFloat (*originalHeaderHeight)(id,SEL,UITableView *,NSInteger);
 static CGFloat (*originalSectionFooterHeight)(id,SEL,UITableView *,NSInteger);
 static void (*originalHeaderDisplay)(id,SEL,UITableView *,UIView *,NSInteger);
-static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey;
+static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey, cellAccessibilityKey;
 extern void *DSAPICopySettingsBackingSource(const void *source);
 static IMP replaceMethod(Class cls,SEL selector,IMP replacement,const char *fallback) {
     if (!cls) return NULL;
@@ -131,6 +131,13 @@ static CGFloat profileHeight(id self,SEL selector,UITableView *table,NSIndexPath
     return originalHeight ? originalHeight(self,selector,table,path) : UITableViewAutomaticDimension;
 }
 static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCell *cell,NSIndexPath *path) {
+    NSDictionary *previousAccessibility=objc_getAssociatedObject(cell,&cellAccessibilityKey);
+    if (previousAccessibility) {
+        cell.isAccessibilityElement=[previousAccessibility[@"element"] boolValue];
+        cell.accessibilityElementsHidden=[previousAccessibility[@"cell"] boolValue];
+        cell.contentView.accessibilityElementsHidden=[previousAccessibility[@"content"] boolValue];
+        objc_setAssociatedObject(cell,&cellAccessibilityKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     if ([cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"]) cell.accessibilityLabel=nil;
     for (NSArray *entry in objc_getAssociatedObject(cell,&cellStateKey)) ((UIView *)entry[0]).hidden=[entry[1] boolValue];
     [objc_getAssociatedObject(cell,&cellOverlayKey) removeFromSuperview];
@@ -139,6 +146,11 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
     cell.hidden=NO;
     if (originalDisplay) originalDisplay(self,selector,table,cell,path);
     NSString *item=itemAt(table,path); cell.hidden=removedItem(item);
+    if (cell.hidden) {
+        objc_setAssociatedObject(cell,&cellAccessibilityKey,@{@"element":@(cell.isAccessibilityElement),
+            @"cell":@(cell.accessibilityElementsHidden),@"content":@(cell.contentView.accessibilityElementsHidden)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        cell.isAccessibilityElement=NO; cell.accessibilityElementsHidden=YES; cell.contentView.accessibilityElementsHidden=YES;
+    }
     #if DSAPI_RUNTIME_DIAGNOSTICS
     NSMutableArray *observed=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.nativeSettingsItems"] mutableCopy] ?: [NSMutableArray array];
     if (item.length && ![observed containsObject:item]) { [observed addObject:item]; [NSUserDefaults.standardUserDefaults setObject:observed forKey:@"DSAPIAdapter.nativeSettingsItems"]; }

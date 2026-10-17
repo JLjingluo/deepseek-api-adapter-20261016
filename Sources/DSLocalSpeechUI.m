@@ -77,10 +77,11 @@ static void refreshSpeechIcons(void) {
         if (matching) selected=matching;
     }
     utterance.voice=selected;
-    self.messageID=identifier; self.activeUtterance=utterance; [self.synth speakUtterance:utterance];
+    self.messageID=identifier; self.activeUtterance=utterance;
     [NSUserDefaults.standardUserDefaults setObject:@"requested" forKey:@"DSAPIAdapter.speechStatus"];
     [NSUserDefaults.standardUserDefaults setInteger:identifier forKey:@"DSAPIAdapter.lastSpokenMessageID"];
     [NSUserDefaults.standardUserDefaults setObject:selected.identifier ?: @"default" forKey:@"DSAPIAdapter.lastSpeechVoice"];
+    [self.synth speakUtterance:utterance];
     refreshSpeechIcons();
 }
 - (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didStartSpeechUtterance:(AVSpeechUtterance *)utterance {
