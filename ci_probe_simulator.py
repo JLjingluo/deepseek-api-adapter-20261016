@@ -110,19 +110,11 @@ def probe():
     report['bundle_id'] = bundle
     if adapter_enabled:
         build_simulator_adapter(app)
-    entitlement_result = subprocess.run(['codesign', '-d', '--entitlements', ':-', str(app)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        raw = entitlement_result.stdout
-        start = raw.find(b'<?xml')
-        entitlement_values = plistlib.loads(raw[start:] if start >= 0 else raw)
-    except Exception:
-        entitlement_values = {}
     # Simulator-only ad-hoc signing; no developer certificate or account involved.
+    # Device App Group entitlements are restricted on the macOS host and cannot
+    # be granted by this ad-hoc test signature. Do not copy them into it.
     entitlements = {'get-task-allow': True}
-    for key in ('com.apple.security.application-groups', 'keychain-access-groups'):
-        if key in entitlement_values:
-            entitlements[key] = entitlement_values[key]
+    report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
     converted = []
