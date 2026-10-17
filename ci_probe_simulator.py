@@ -63,6 +63,27 @@ def sign_simulator_app(app, entitlement_path):
     run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
 
 
+def original_build_versions(path):
+    data = path.read_bytes()
+    cursor = 32
+    for _ in range(struct.unpack_from('<I', data, 16)[0]):
+        command, length = struct.unpack_from('<II', data, cursor)
+        if length < 8 or cursor+length > len(data):
+            raise RuntimeError('Invalid Mach-O command bounds: '+str(path))
+        if command == 0x32:
+            minimum, sdk = struct.unpack_from('<II', data, cursor+12)
+            break
+        if command == 0x25:
+            minimum, sdk = struct.unpack_from('<II', data, cursor+8)
+            break
+        cursor += length
+    else:
+        raise RuntimeError('No original iOS build version: '+str(path))
+    def version(value):
+        return f'{value >> 16}.{(value >> 8) & 255}.{value & 255}'
+    return version(minimum), version(sdk)
+
+
 def select_simulator_toolchain():
     # This input was linked with SDK 26 and strongly imports libswiftWebKit.
     # Selecting the default Xcode 16 / iOS 18 runtime cannot load that import.
@@ -176,6 +197,7 @@ def probe():
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
     converted = []
+    report['preserved_build_versions'] = []
     for path in list(app.rglob('*')):
         if not path.is_file() or path.is_symlink():
             continue
@@ -191,7 +213,11 @@ def probe():
             run(['lipo', str(path), '-thin', 'arm64', '-output', str(thin)])
             thin.replace(path)
         output = path.with_name(path.name+'.simulator')
-        run(['xcrun', 'vtool', '-arch', 'arm64', '-set-build-version', '7', '18.0', '18.0',
+        minimum, sdk = original_build_versions(path)
+        # UIKit compatibility behavior depends on the main executable's linked
+        # SDK. Preserve it so a simulator comparison does not select old UI.
+        report['preserved_build_versions'].append({'path': str(path.relative_to(app)), 'minimum': minimum, 'sdk': sdk})
+        run(['xcrun', 'vtool', '-arch', 'arm64', '-set-build-version', '7', minimum, sdk,
              '-replace', '-output', str(output), str(path)])
         output.replace(path)
         path.chmod(0o755)
@@ -259,13 +285,14 @@ def probe():
     report['result'] = 'original binary remained running; screenshots require inspection'
 
 
-try:
-    probe()
-except Exception as error:
-    report['error'] = str(error)
-    report['result'] = 'baseline probe failed; no UI equivalence established'
-finally:
-    (diagnostics/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
-if 'error' in report:
-    sys.exit(1)
+if __name__ == '__main__':
+    try:
+        probe()
+    except Exception as error:
+        report['error'] = str(error)
+        report['result'] = 'baseline probe failed; no UI equivalence established'
+    finally:
+        (diagnostics/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
+    if 'error' in report:
+        sys.exit(1)
