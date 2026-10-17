@@ -42,7 +42,7 @@ public func runRuntimeProbe() {
     func visit(_ view: UIView, _ depth: Int) {
         guard views.count < 1500, depth < 40 else { return }
         var item: [String: Any] = ["class": NSStringFromClass(type(of: view)), "depth": depth,
-            "hidden": view.isHidden, "frame": NSStringFromCGRect(view.frame)]
+            "hidden": view.isHidden, "frame": NSCoder.string(for: view.frame)]
         if let label = view as? UILabel { item["text"] = label.text ?? "" }
         if let button = view as? UIButton { item["title"] = button.title(for: .normal) ?? "" }
         views.append(item)

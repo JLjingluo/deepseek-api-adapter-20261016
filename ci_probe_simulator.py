@@ -27,6 +27,7 @@ def run(args, *, timeout=120, check=True):
     print('$', ' '.join(str(x) for x in args), flush=True)
     print(result.stdout[-16000:], flush=True)
     if check and result.returncode:
+        report['failed_command'] = {'argv': [str(x) for x in args], 'output': result.stdout[-16000:]}
         raise RuntimeError(f'Command failed ({result.returncode}): {args[0]}')
     return result
 
