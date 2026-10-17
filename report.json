@@ -1,0 +1,13 @@
+{
+  "verification": "experimental original-binary simulator baseline",
+  "steps": [],
+  "adapter_enabled": true,
+  "architecture": "arm64",
+  "xcode": "Xcode 16.4\nBuild version 16F6\n",
+  "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+  "device_type": "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro",
+  "device": "7EAF9A43-650C-442D-858C-D70F14647A3E",
+  "bundle_id": "com.deepseek.chat",
+  "error": "Command failed (1): xcrun",
+  "result": "baseline probe failed; no UI equivalence established"
+}
