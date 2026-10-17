@@ -32,6 +32,36 @@ def run(args, *, timeout=120, check=True):
     return result
 
 
+def capture_startup_threads():
+    processes = run(['pgrep', '-x', 'DeepSeek Chat'], check=False)
+    for value in processes.stdout.split():
+        if not value.isdecimal():
+            continue
+        destination = diagnostics/f'startup-{value}.sample.txt'
+        sampled = run(['sample', value, '3', '-file', str(destination)], timeout=20, check=False)
+        if sampled.returncode:
+            run(['sudo', '-n', 'sample', value, '3', '-file', str(destination)], timeout=20, check=False)
+
+
+def launch_application(device, bundle):
+    args = ['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle]
+    process = subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        output, _ = process.communicate(timeout=8)
+    except subprocess.TimeoutExpired:
+        capture_startup_threads()
+        try:
+            output, _ = process.communicate(timeout=100)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            output, _ = process.communicate()
+            report['launch_timed_out'] = True
+            # Still collect screenshots, application logs and crash reports below.
+    print('$', ' '.join(args), flush=True)
+    print(output[-16000:], flush=True)
+    return subprocess.CompletedProcess(args, process.returncode, output)
+
+
 def build_simulator_adapter(app):
     """Build test-only observation code into the disposable simulator module."""
     from repack import add_library
@@ -40,7 +70,7 @@ def build_simulator_adapter(app):
     objects.mkdir(exist_ok=True)
     for source in [*pathlib.Path('Sources').glob('*.m'), pathlib.Path('Tests/RuntimeProbe.m')]:
         run(['xcrun', 'clang', '-target', 'arm64-apple-ios18.0-simulator', '-isysroot', sdk,
-             '-ISources', '-fobjc-arc', '-fmodules', '-O2', '-c', str(source),
+             '-ISources', '-DDSAPI_RUNTIME_DIAGNOSTICS=1', '-fobjc-arc', '-fmodules', '-O2', '-c', str(source),
              '-o', str(objects/(source.stem+'.o'))])
     library = app/'Frameworks/DSAPIAdapter.dylib'
     library.parent.mkdir(exist_ok=True)
@@ -236,16 +266,16 @@ def probe():
     (diagnostics/'install.txt').write_text(install.stdout)
     if install.returncode:
         raise RuntimeError('Simulator installation rejected the converted original binary')
-    launch = run(['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle], check=False)
+    launch = launch_application(device, bundle)
     report['signing_attempts'] = [{'entitlements': entitlements, 'launch_exit_code': launch.returncode}]
-    if launch.returncode:
+    if launch.returncode and not report.get('launch_timed_out'):
         # One controlled comparison: no entitlements. The device get-task-allow
         # entitlement was rejected by host AMFI in the previous investigation.
         (diagnostics/'launch-sandbox.txt').write_text(launch.stdout)
         entitlement_path.write_bytes(plistlib.dumps({}))
         sign_simulator_app(app, entitlement_path)
         run(['xcrun', 'simctl', 'install', device, str(app)])
-        launch = run(['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle], check=False)
+        launch = launch_application(device, bundle)
         report['signing_attempts'].append({'entitlements': {}, 'launch_exit_code': launch.returncode})
         report['simulator_entitlements'] = []
         signature = run(['codesign', '-d', '--verbose=4', '--entitlements', ':-', str(app)], check=False)

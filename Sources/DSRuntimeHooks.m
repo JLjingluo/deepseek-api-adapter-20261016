@@ -3,6 +3,12 @@
 #import <objc/message.h>
 #import "DSCompatibilityProtocol.h"
 #import "DSAPISettingsViewController.h"
+#if DSAPI_RUNTIME_DIAGNOSTICS
+#import <os/log.h>
+#define DSBootstrapMark(value) os_log(OS_LOG_DEFAULT, "DSAPI bootstrap: %{public}s", value)
+#else
+#define DSBootstrapMark(value) ((void)0)
+#endif
 
 extern void *DSAPICopyLocalUserData(void);
 static NSData *(*DSOriginalGetData)(id,SEL,NSString *);
@@ -18,7 +24,9 @@ static NSData *DSLocalUser(id self, SEL selector, NSString *key) {
     if ([key isEqualToString:@"currentUser"]) {
         static NSData *canonical; static dispatch_once_t once;
         dispatch_once(&once, ^{
+            DSBootstrapMark("local-user-decode-begin");
             void *result = DSAPICopyLocalUserData();
+            DSBootstrapMark("local-user-decode-returned");
             if (result) canonical = CFBridgingRelease((CFTypeRef)result);
         });
         if (canonical) return canonical;
@@ -108,15 +116,20 @@ static IMP DSReplace(Class cls, SEL selector, IMP replacement, const char *fallb
     return previous;
 }
 __attribute__((constructor)) static void DSInstall(void) {
+    DSBootstrapMark("constructor-enter");
     NSString *executable = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"];
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
     if (![executable isEqualToString:@"DeepSeek Chat"] || ![version isEqualToString:@"2.6.2"]) return;
+    DSBootstrapMark("bundle-checked");
     Class mmkv = NSClassFromString(@"MMKV");
     if (class_getInstanceMethod(mmkv,NSSelectorFromString(@"getDataForKey:")))
         DSOriginalGetData = (void *)DSReplace(mmkv,NSSelectorFromString(@"getDataForKey:"),(IMP)DSLocalUser,"@@:@");
+    DSBootstrapMark("mmkv-hooked");
     Class meta = object_getClass(NSURLSession.class);
     DSOriginalSession = (void *)DSReplace(meta,@selector(sessionWithConfiguration:delegate:delegateQueue:),(IMP)DSCreateSession,"@@:@@@");
+    DSBootstrapMark("url-session-hooked");
     [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
+    DSBootstrapMark("protocol-registered");
     Class profile = NSClassFromString(@"_TtC13DeepSeek_Chat21ProfileViewController");
     if (profile) {
         class_addMethod(profile,NSSelectorFromString(@"dsapi_presentSettings"),(IMP)DSShowSettings,"v@:");
@@ -129,4 +142,5 @@ __attribute__((constructor)) static void DSInstall(void) {
     SEL hash = NSSelectorFromString(@"solveHash256:diff:target:");
     if (pow && class_getClassMethod(pow,hash))
         DSOriginalLocalHash = (void *)DSReplace(object_getClass(pow),hash,(IMP)DSLocalHash,"q@:@q@");
+    DSBootstrapMark("constructor-complete");
 }
