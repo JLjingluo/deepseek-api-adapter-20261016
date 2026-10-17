@@ -165,13 +165,17 @@ def collect_ui_observations(device):
     from ci_ui_probe import create_project
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
-    outcome = run(['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
+    arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
         '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests/testNativeApp',
-        'test'], timeout=480, check=False)
+        'test']
+    if report.get('mock_api_base_url'):
+        arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_MOCK_UI')
+    outcome = run(arguments, timeout=480, check=False)
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
-    report['ui_test_scope'] = 'startup screenshots, known welcome agreement, accessible controls only'
+    report['ui_test_scope'] = ('startup, local API request/render assertion and optional settings navigation'
+        if report.get('mock_api_base_url') else 'startup and optional settings navigation')
     if results.exists():
         exported = run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(results),
             '--output-path', str(diagnostics/'UIAttachments')], timeout=90, check=False)

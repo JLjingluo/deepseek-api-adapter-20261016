@@ -22,6 +22,9 @@ public func runRuntimeProbe() {
         ("ServerModels.Completion.FinishChunk", [String: Any]()),
         ("ServerModels.POV", ["p": "response", "o": "SET", "v": message]),
         ("ServerModels.Response.ClientSettings", ["version": 0, "settings": [:]]),
+        ("ServerModels.Response.Challenge", ["algorithm": "SHA256", "challenge": String(repeating: "0", count: 64),
+            "salt": "local-api-handshake", "signature": "local-only", "difficulty": 0,
+            "expire_at": 1_900_000_000_000, "expire_after": 3_600_000]),
         ("ServerModels.Response.ChatSessionFetchPage", ["chat_sessions": [session], "has_more": false]),
         ("ServerModels.Response.ChatHistoryMessages", ["chat_session": session, "chat_messages": [message],
             "cache_control": "replace", "cache_reset_at": 0])
@@ -40,6 +43,7 @@ public func runRuntimeProbe() {
             do {
                 let decoded = try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
                 result["decoded"] = true
+                result["reflection"] = String(reflecting: decoded)
                 if let encodable = decoded as? any Encodable,
                    let encoded = try? JSONEncoder().encode(encodable),
                    let canonical = try? JSONSerialization.jsonObject(with: encoded) {
