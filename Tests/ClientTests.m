@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "DSOpenAIClient.h"
+#import <objc/runtime.h>
 
 static void check(BOOL value, NSString *name) {
     if (!value) { fprintf(stderr,"FAIL: %s\n",name.UTF8String); exit(1); }
@@ -9,6 +10,19 @@ static NSString *lastAuthorization;
 static NSString *scenario;
 @interface ClientFixture : NSURLProtocol
 @property(nonatomic) BOOL cancelled;
+@end
+
+@interface NSURLSession (FixtureSession)
++ (NSURLSession *)fixtureSessionWithConfiguration:(NSURLSessionConfiguration *)config
+    delegate:(id<NSURLSessionDelegate>)delegate delegateQueue:(NSOperationQueue *)queue;
+@end
+@implementation NSURLSession (FixtureSession)
++ (NSURLSession *)fixtureSessionWithConfiguration:(NSURLSessionConfiguration *)config
+    delegate:(id<NSURLSessionDelegate>)delegate delegateQueue:(NSOperationQueue *)queue {
+    NSURLSessionConfiguration *copy=[config copy];
+    copy.protocolClasses=@[ClientFixture.class];
+    return [self fixtureSessionWithConfiguration:copy delegate:delegate delegateQueue:queue];
+}
 @end
 @implementation ClientFixture
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
@@ -64,6 +78,8 @@ static void runCase(NSString *name, BOOL success) {
     while (!terminals && deadline.timeIntervalSinceNow>0)
         [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
     check(terminals==1,[name stringByAppendingString:@" finishes once"]);
+    if (success && failure) fprintf(stderr,"Client failure: %s:%ld (%s); fixture reached=%s\n",
+        failure.domain.UTF8String,(long)failure.code,failure.localizedDescription.UTF8String,lastBody ? "yes" : "no");
     check(success ? !failure : failure!=nil,[name stringByAppendingString:@" expected outcome"]);
     if (success) {
         check([text isEqual:@"你好🌏"] && [thought isEqual:@"思考🧠"],@"native client preserves byte-fragmented text and reasoning");
@@ -79,10 +95,14 @@ static void runCase(NSString *name, BOOL success) {
 int main(void) {
     @autoreleasepool {
         [NSURLProtocol registerClass:ClientFixture.class];
+        Method normal=class_getClassMethod(NSURLSession.class,@selector(sessionWithConfiguration:delegate:delegateQueue:));
+        Method fixture=class_getClassMethod(NSURLSession.class,@selector(fixtureSessionWithConfiguration:delegate:delegateQueue:));
+        method_exchangeImplementations(normal,fixture);
         runCase(@"success",YES);
         for (NSString *name in @[@"http401",@"http429",@"http500",@"mime",@"malformed",@"truncated",@"timeout",@"cancel"])
             runCase(name,NO);
         [NSURLProtocol unregisterClass:ClientFixture.class];
+        method_exchangeImplementations(normal,fixture);
         puts("PASS: native client streaming, reasoning, history, HTTP errors, malformed/truncated streams, timeout, cancellation");
     }
     return 0;
