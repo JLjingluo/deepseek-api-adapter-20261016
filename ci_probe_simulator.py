@@ -19,7 +19,9 @@ diagnostics = pathlib.Path('diagnostics')
 diagnostics.mkdir(exist_ok=True)
 report = {'verification': 'experimental original-binary simulator baseline', 'steps': []}
 adapter_enabled = os.environ.get('PROBE_ADAPTER') == 'true'
+packaged_adapter = os.environ.get('PROBE_PACKAGED_ADAPTER') == 'true'
 report['adapter_enabled'] = adapter_enabled
+report['packaged_adapter'] = packaged_adapter
 
 
 def run(args, *, timeout=120, check=True):
@@ -83,6 +85,26 @@ def build_simulator_adapter(app):
     info = plistlib.loads((app/'Info.plist').read_bytes())
     executable = app/info['CFBundleExecutable']
     patched, count = add_library(executable.read_bytes(), '@executable_path/Frameworks/DSAPIAdapter.dylib')
+    executable.write_bytes(patched)
+    report['unchanged_original_TEXT_sections'] = count
+
+
+def add_runtime_observer(app):
+    """Keep the packaged adapter's machine code; add a separate test observer."""
+    from repack import add_library
+    sdk = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path']).stdout.strip()
+    object_file = root/'RuntimeObserver.o'
+    run(['xcrun', 'clang', '-target', 'arm64-apple-ios18.0-simulator', '-isysroot', sdk,
+        '-ISources', '-fobjc-arc', '-fmodules', '-O2', '-c', 'Tests/RuntimeProbe.m', '-o', str(object_file)])
+    library = app/'Frameworks/DSRuntimeProbe.dylib'
+    run(['xcrun', 'swiftc', '-sdk', sdk, '-target', 'arm64-apple-ios18.0-simulator',
+        '-swift-version', '5', '-O', '-emit-library', 'Tests/RuntimeProbe.swift', str(object_file),
+        '-Xlinker', '-install_name',
+        '-Xlinker', '@rpath/DSRuntimeProbe.dylib', '-framework', 'Foundation',
+        '-framework', 'UIKit', '-framework', 'Security', '-o', str(library)])
+    info = plistlib.loads((app/'Info.plist').read_bytes())
+    executable = app/info['CFBundleExecutable']
+    patched, count = add_library(executable.read_bytes(), '@executable_path/Frameworks/DSRuntimeProbe.dylib')
     executable.write_bytes(patched)
     report['unchanged_original_TEXT_sections'] = count
 
@@ -185,6 +207,10 @@ def probe():
     run(['xcrun', 'simctl', 'boot', device])
     run(['xcrun', 'simctl', 'bootstatus', device, '-b'], timeout=240)
     root.mkdir(exist_ok=True)
+    if adapter_enabled and os.environ.get('PROBE_MOCK_API') == 'true':
+        from ci_mock_api import start_mock_api
+        server, base_url = start_mock_api(root, diagnostics, device, run)
+        report['mock_api_base_url'] = base_url
     with zipfile.ZipFile(sys.argv[1]) as package:
         for info in package.infolist():
             path = pathlib.PurePosixPath(info.filename)
@@ -208,12 +234,20 @@ def probe():
     main_info = plistlib.loads((app/'Info.plist').read_bytes())
     bundle = main_info['CFBundleIdentifier']
     report['bundle_id'] = bundle
-    if adapter_enabled:
+    if packaged_adapter and not adapter_enabled:
+        raise RuntimeError('A packaged adapter probe requires adapter mode')
+    if packaged_adapter:
+        import hashlib
+        library = app/'Frameworks/DSAPIAdapter.dylib'
+        if not library.is_file():
+            raise RuntimeError('Candidate does not contain its adapter library')
+        report['packaged_adapter_sha256'] = hashlib.sha256(library.read_bytes()).hexdigest()
+    elif adapter_enabled:
         build_simulator_adapter(app)
     # Simulator-only ad-hoc signing; no developer certificate or account involved.
     # Device App Group entitlements are restricted on the macOS host and cannot
     # be granted by this ad-hoc test signature. Do not copy them into it.
-    entitlements = {'com.apple.security.app-sandbox': True}
+    entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
@@ -245,6 +279,8 @@ def probe():
         run(['codesign', '--force', '--sign', '-', str(path)])
         converted.append(str(path.relative_to(app)))
     report['converted_macho_files'] = converted
+    if packaged_adapter:
+        add_runtime_observer(app)
     run(['xattr', '-cr', str(app)])
     sign_simulator_app(app, entitlement_path)
     verification = run(['codesign', '--verify', '--deep', '--strict', '--verbose=4', str(app)], check=False)

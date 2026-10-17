@@ -67,6 +67,8 @@ public func runRuntimeProbe() {
     let report: [String: Any] = ["scope": "simulator-only fixture and view observation",
         "bootstrap": UserDefaults.standard.string(forKey: "DSAPIAdapter.bootstrapStatus") ?? "not reported",
         "last_route": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastLocalRoute") ?? "none",
+        "mock_configuration_saved": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testConfigurationSaved"),
+        "mock_configuration_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.testConfigurationError") ?? "none",
         "fixtures": results, "views": views]
     if let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
        let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {

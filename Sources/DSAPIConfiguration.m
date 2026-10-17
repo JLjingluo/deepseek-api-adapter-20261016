@@ -12,7 +12,7 @@ static NSError *DSConfigError(NSString *description) {
         userInfo:@{NSLocalizedDescriptionKey:description}];
 }
 @implementation DSAPIConfiguration
-+ (instancetype)load {
++ (instancetype)loadConfiguration {
     DSAPIConfiguration *config = [self new];
     NSDictionary *values = [NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey];
     config.baseURL = [values[@"baseURL"] isKindOfClass:NSString.class] ? values[@"baseURL"] : @"https://api.deepseek.com/v1";

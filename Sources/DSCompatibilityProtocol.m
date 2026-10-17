@@ -216,7 +216,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     [self.client URLProtocolDidFinishLoading:self];
 }
 - (void)chat:(NSDictionary *)p {
-    DSAPIConfiguration *config = [DSAPIConfiguration load];
+    DSAPIConfiguration *config = [DSAPIConfiguration loadConfiguration];
     if (!config.apiKey.length) { [self fail:@"请先在 API 设置中填写 Base URL、API Key 和模型名。"]; return; }
     if ([p[@"ref_file_ids"] isKindOfClass:NSArray.class] && [p[@"ref_file_ids"] count]) {
         [self fail:@"当前附件服务尚未接入；没有将附件静默丢弃。"]; return;

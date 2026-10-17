@@ -6,6 +6,14 @@ on:
         description: Include the adapter and test-only native decoder observations
         type: boolean
         default: false
+      mock_api:
+        description: Configure a disposable local HTTPS chat fixture (adapter mode only)
+        type: boolean
+        default: false
+      candidate_tag:
+        description: Optional candidate-N release; use its compiled adapter instead of rebuilding it
+        type: string
+        default: ''
 permissions:
   contents: write
 jobs:
@@ -17,6 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download encrypted input and decrypt locally
+        if: inputs.candidate_tag == ''
         env:
           INPUT_PASSWORD: ${{ secrets.IPA_PROBE_INPUT_PASSWORD }}
         run: |
@@ -26,9 +35,29 @@ jobs:
             --output original.ipa.enc
           openssl enc -d -aes-256-cbc -pbkdf2 -in original.ipa.enc -out original.ipa -pass env:INPUT_PASSWORD
           echo '92a96bbbb7938f084a3840b4426bd891fe18dc46c1b6d4221186cb7df6cc18d9  original.ipa' | shasum -a 256 -c -
+      - name: Download and verify a compiled candidate
+        if: inputs.candidate_tag != ''
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, urllib.request
+          tag=os.environ['CANDIDATE_TAG']
+          if not re.fullmatch(r'candidate-[0-9]+',tag): raise SystemExit('Invalid candidate tag')
+          base='https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/releases/download/'+tag+'/'
+          name='DeepSeek-API-2.6.2-experimental-unsigned'
+          urllib.request.urlretrieve(base+name+'.verification.json','input.verification.json')
+          urllib.request.urlretrieve(base+name+'.ipa','original.ipa')
+          expected=json.loads(pathlib.Path('input.verification.json').read_text())['ipa_sha256']
+          if hashlib.sha256(pathlib.Path('original.ipa').read_bytes()).hexdigest()!=expected:
+              raise SystemExit('Candidate identity mismatch')
+          print('Verified candidate',tag,expected)
+          PY
       - name: Probe original binary in a disposable simulator copy
         env:
           PROBE_ADAPTER: ${{ inputs.adapter }}
+          PROBE_MOCK_API: ${{ inputs.mock_api }}
+          PROBE_PACKAGED_ADAPTER: ${{ inputs.candidate_tag != '' }}
         run: python3 ci_probe_simulator.py original.ipa
       - name: Upload bounded diagnostics only
         if: always()

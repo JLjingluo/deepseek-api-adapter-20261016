@@ -11,7 +11,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"API 设置";
-    self.configuration = [DSAPIConfiguration load];
+    self.configuration = [DSAPIConfiguration loadConfiguration];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
         target:self action:@selector(cancel)];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
