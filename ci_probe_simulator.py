@@ -57,6 +57,12 @@ def build_simulator_adapter(app):
     report['unchanged_original_TEXT_sections'] = count
 
 
+def sign_simulator_app(app, entitlement_path):
+    for extension in sorted(app.rglob('*.appex'), key=lambda p: len(p.parts), reverse=True):
+        run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(extension)])
+    run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
+
+
 def probe():
     report['architecture'] = run(['uname', '-m']).stdout.strip()
     if report['architecture'] != 'arm64':
@@ -113,7 +119,7 @@ def probe():
     # Simulator-only ad-hoc signing; no developer certificate or account involved.
     # Device App Group entitlements are restricted on the macOS host and cannot
     # be granted by this ad-hoc test signature. Do not copy them into it.
-    entitlements = {'get-task-allow': True}
+    entitlements = {'com.apple.security.app-sandbox': True}
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
@@ -141,9 +147,7 @@ def probe():
         converted.append(str(path.relative_to(app)))
     report['converted_macho_files'] = converted
     run(['xattr', '-cr', str(app)])
-    for extension in sorted(app.rglob('*.appex'), key=lambda p: len(p.parts), reverse=True):
-        run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(extension)])
-    run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
+    sign_simulator_app(app, entitlement_path)
     verification = run(['codesign', '--verify', '--deep', '--strict', '--verbose=4', str(app)], check=False)
     (diagnostics/'signature-verification.txt').write_text(verification.stdout)
     report['signature_verify_exit_code'] = verification.returncode
@@ -155,6 +159,19 @@ def probe():
     if install.returncode:
         raise RuntimeError('Simulator installation rejected the converted original binary')
     launch = run(['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle], check=False)
+    report['signing_attempts'] = [{'entitlements': entitlements, 'launch_exit_code': launch.returncode}]
+    if launch.returncode:
+        # One controlled comparison: no entitlements. The device get-task-allow
+        # entitlement was rejected by host AMFI in the previous investigation.
+        (diagnostics/'launch-sandbox.txt').write_text(launch.stdout)
+        entitlement_path.write_bytes(plistlib.dumps({}))
+        sign_simulator_app(app, entitlement_path)
+        run(['xcrun', 'simctl', 'install', device, str(app)])
+        launch = run(['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle], check=False)
+        report['signing_attempts'].append({'entitlements': {}, 'launch_exit_code': launch.returncode})
+        report['simulator_entitlements'] = []
+        signature = run(['codesign', '-d', '--verbose=4', '--entitlements', ':-', str(app)], check=False)
+        (diagnostics/'signature-metadata-final.txt').write_text(signature.stdout)
     report['launch_exit_code'] = launch.returncode
     (diagnostics/'launch.txt').write_text(launch.stdout)
     match = re.search(r':\s*(\d+)\s*$', launch.stdout)
