@@ -13,9 +13,13 @@ public func runRuntimeProbe() {
         "ban_edit": false, "ban_regenerate": false, "tips": [], "conversation_mode": "CHAT",
         "search_enabled": false, "search_triggered": false, "extra_search_providers": []]
     let fixtures: [(String, Any)] = [
+        ("AppModels.User", ["id": "local-api", "token": "local-api-no-official-account", "email": "",
+            "mobile": "", "idProfiles": [], "chat": ["isMuted": 0], "needBirthday": false]),
         ("ServerModels.Session", session), ("ServerModels.Message", message),
         ("ServerModels.Completion.ReadyChunk", ["request_message_id": 1, "response_message_id": 2,
             "model_type": "default", "request_content": "测试", "ban_edit": false]),
+        ("ServerModels.Completion.TitleChunk", ["content": "新对话"]),
+        ("ServerModels.Completion.FinishChunk", [String: Any]()),
         ("ServerModels.POV", ["p": "response", "o": "SET", "v": message]),
         ("ServerModels.Response.ClientSettings", ["version": 0, "settings": [:]]),
         ("ServerModels.Response.ChatSessionFetchPage", ["chat_sessions": [session], "has_more": false]),
@@ -25,7 +29,14 @@ public func runRuntimeProbe() {
     var results: [[String: Any]] = []
     for (name, value) in fixtures {
         var result: [String: Any] = ["type": name]
-        if let type = _typeByName("DeepSeek_Chat." + name) as? any Decodable.Type {
+        // These fixture names have enum namespaces and a struct leaf, as
+        // observed in this input's nominal type descriptors.
+        let parts = name.split(separator: ".").map(String.init)
+        let namespaces = parts.dropLast().map { "\($0.utf8.count)\($0)O" }.joined()
+        let leaf = parts.last!
+        let mangled = "13DeepSeek_Chat" + namespaces + "\(leaf.utf8.count)\(leaf)V"
+        let resolved = _typeByName("DeepSeek_Chat." + name) ?? _typeByName(mangled)
+        if let type = resolved as? any Decodable.Type {
             do {
                 let decoded = try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
                 result["decoded"] = true

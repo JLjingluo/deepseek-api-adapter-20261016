@@ -25,7 +25,8 @@ Current modules:
 - GitHub Actions compilation on macOS and tests of fragmentation and completion errors.
 
 The source tree contains no original IPA, application resources, credentials or
-original source code. The GitHub workflow builds only the adapter library.
+original source code. The GitHub workflow compiles the adapter and packages an
+experimental unsigned IPA from the exact encrypted input, with resource checks.
 The integration preserves the original binary's UI implementation and resources;
 it has not been visually compared on a device. It reroutes account-dependent
 startup through a local context. Original compiled account/login code remains in

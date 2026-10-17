@@ -117,18 +117,9 @@ def original_build_versions(path):
 def select_simulator_toolchain():
     # This input was linked with SDK 26 and strongly imports libswiftWebKit.
     # Selecting the default Xcode 16 / iOS 18 runtime cannot load that import.
-    candidates = []
-    for app in pathlib.Path('/Applications').glob('Xcode*.app'):
-        if 'beta' in app.name.lower():
-            continue
-        try:
-            info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
-            version = tuple(int(x) for x in info['CFBundleShortVersionString'].split('.'))
-            candidates.append((version, app/'Contents/Developer'))
-        except (OSError, ValueError, KeyError):
-            continue
+    from ci_xcode import installed_toolchains
     report['available_toolchains'] = []
-    for _, developer in sorted(candidates, reverse=True):
+    for _, developer in installed_toolchains():
         os.environ['DEVELOPER_DIR'] = str(developer)
         result = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], check=False)
         if result.returncode:

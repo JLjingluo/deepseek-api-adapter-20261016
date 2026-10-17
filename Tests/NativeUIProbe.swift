@@ -19,7 +19,15 @@ final class CaptureTests: XCTestCase {
                 break
             }
         }
-        capture(app, "after-welcome")
+        for label in ["Start Chat", "开始聊天", "开始对话", "开始使用"] {
+            let text = app.staticTexts[label].firstMatch
+            if text.exists && text.isHittable {
+                text.tap()
+                Thread.sleep(forTimeInterval: 3)
+                break
+            }
+        }
+        capture(app, "after-optional-welcome")
         print("DSAPI_UI_HIERARCHY_BEGIN\n" + String(app.debugDescription.prefix(24000)) + "\nDSAPI_UI_HIERARCHY_END")
     }
 

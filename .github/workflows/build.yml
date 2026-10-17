@@ -1,4 +1,4 @@
-name: Build iOS adapter
+name: Build experimental iOS IPA
 on:
   push:
     branches: [main]
@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Select an installed Xcode matching the original SDK generation
+        run: python3 ci_xcode.py
       - name: Test SSE and endpoint handling
         run: |
           mkdir -p build
@@ -46,20 +48,36 @@ jobs:
           codesign --force --sign - build/DSAPIAdapter.dylib
           file build/DSAPIAdapter.dylib
           shasum -a 256 build/DSAPIAdapter.dylib > build/SHA256SUMS
-      - name: Publish adapter-only prerelease
+      - name: Obtain the exact encrypted source package
+        env:
+          INPUT_PASSWORD: ${{ secrets.IPA_PROBE_INPUT_PASSWORD }}
+        run: |
+          test -n "$INPUT_PASSWORD"
+          curl --fail --location --silent --show-error \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/probe-input-2.6.2/original.ipa.enc" \
+            --output original.ipa.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -in original.ipa.enc -out original.ipa -pass env:INPUT_PASSWORD
+          echo '92a96bbbb7938f084a3840b4426bd891fe18dc46c1b6d4221186cb7df6cc18d9  original.ipa' | shasum -a 256 -c -
+      - name: Package the adapter while verifying preserved original resources
+        run: |
+          python3 repack.py original.ipa build/DSAPIAdapter.dylib build/DeepSeek-API-2.6.2-experimental-unsigned.ipa
+          shasum -a 256 build/*.ipa build/*.verification.json >> build/SHA256SUMS
+      - name: Publish experimental full-package prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG="adapter-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease \
-            --title "Adapter integration candidate ${GITHUB_RUN_NUMBER}" \
-            --notes "Adapter library only. No original IPA or credentials are included. Device integration remains unverified." \
-            build/DSAPIAdapter.dylib build/SHA256SUMS
+          TAG="candidate-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" --target "$GITHUB_REF_NAME" --prerelease \
+            --title "Experimental unsigned IPA ${GITHUB_RUN_NUMBER}" \
+            --notes "实验性未签名整包，需自行签名。构建及资源校验不代表启动、UI 或功能验收通过；不能称为 100% 等价成品。附件、搜索、语音与云分享仍有未实现部分。请阅读 verification.json。" \
+            build/DSAPIAdapter.dylib build/SHA256SUMS build/*.ipa build/*.verification.json
       - uses: actions/upload-artifact@v4
         with:
-          name: DSAPIAdapter-arm64
+          name: DeepSeek-API-experimental-unsigned
           path: |
             build/DSAPIAdapter.dylib
             build/SHA256SUMS
+            build/*.ipa
+            build/*.verification.json
           retention-days: 7
