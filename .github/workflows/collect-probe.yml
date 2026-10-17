@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: original-simulator-probe
           path: diagnostics
@@ -26,6 +27,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PROBE_RUN_ID: ${{ inputs.run_id }}
         run: |
+          mkdir -p diagnostics
           gh run view "$PROBE_RUN_ID" --log > diagnostics/probe-job.log
           python3 - <<'PY'
           import json, os, pathlib, subprocess, urllib.request, zipfile
