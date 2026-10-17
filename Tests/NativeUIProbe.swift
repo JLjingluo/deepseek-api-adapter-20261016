@@ -34,6 +34,7 @@ final class CaptureTests: XCTestCase {
 
     func testNativeSettings() throws {
         let app = openNativeApp()
+        continueAfterFailure = true
         let settingsVisited = inspectSettings(app)
         print("DSAPI_API_SETTINGS_VISITED=\(settingsVisited)")
         #if DSAPI_ADAPTER_UI
