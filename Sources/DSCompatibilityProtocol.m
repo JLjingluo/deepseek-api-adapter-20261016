@@ -209,6 +209,18 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     NSNumber *parent = [p[@"parent_message_id"] isKindOfClass:NSNumber.class] ? p[@"parent_message_id"] : nil;
     NSString *prompt = [p[@"prompt"] isKindOfClass:NSString.class] ? p[@"prompt"] : nil;
+    if (!parent && [p[@"message_id"] isKindOfClass:NSNumber.class]) {
+        NSDictionary *selected = [DSLocalStore.shared message:p[@"message_id"] session:sid];
+        if (!selected) { [self fail:@"待重试或编辑的消息不存在。"]; return; }
+        if ([selected[@"role"] isEqual:@"ASSISTANT"]) {
+            id userID = selected[@"parent_id"];
+            NSDictionary *user = [userID isKindOfClass:NSNumber.class] ? [DSLocalStore.shared message:userID session:sid] : nil;
+            parent = prompt ? ([user[@"parent_id"] isKindOfClass:NSNumber.class] ? user[@"parent_id"] : nil) : userID;
+        } else {
+            parent = prompt ? ([selected[@"parent_id"] isKindOfClass:NSNumber.class] ? selected[@"parent_id"] : nil) : selected[@"message_id"];
+        }
+    }
+    if (!parent && !prompt && [p[@"child_message_id"] isKindOfClass:NSNumber.class]) parent = p[@"child_message_id"];
     if (!prompt && !parent) { [self fail:@"缺少消息内容或父消息。"]; return; }
     NSError *error = nil;
     NSArray *turn = [DSLocalStore.shared beginTurn:sid parent:parent prompt:prompt thinking:[p[@"thinking_enabled"] boolValue] error:&error];

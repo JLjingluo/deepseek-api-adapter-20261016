@@ -23,6 +23,11 @@ jobs:
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
             Sources/DSLocalStore.m Tests/StoreTests.m -framework Foundation -o build/StoreTests
           build/StoreTests
+          xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
+            Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSOpenAIClient.m \
+            Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ProtocolTests.m \
+            -framework Foundation -framework Security -o build/ProtocolTests
+          build/ProtocolTests
       - name: Compile iOS arm64 library
         run: |
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
