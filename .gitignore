@@ -6,4 +6,7 @@ build/
 *.p12
 *.mobileprovision
 .env*
+sim-probe/
+diagnostics/
+original.ipa.enc
 

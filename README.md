@@ -33,3 +33,10 @@ fail explicitly instead of falling back to the original conversation service.
 Limitations: original-app startup, runtime type lookup, event conversion, settings
 hooks, background behavior, original widgets and actual API requests have not been
 verified on an iPhone. These must not be described as passed tests.
+
+An additional manually dispatched `simulator-probe.yml` workflow investigates
+whether a disposable copy of the original arm64 binary can run on an ARM iOS
+simulator after platform metadata conversion. Its encrypted input key is an
+Actions secret; raw application input is not part of the source tree or diagnostic
+archive. This experiment does not change the device delivery input and is not
+proof of physical-device compatibility or 100% feature/UI equivalence.
