@@ -22,12 +22,12 @@ public func runRuntimeProbe() {
         ("ServerModels.Completion.FinishChunk", [String: Any]()),
         ("ServerModels.POV", ["p": "response", "o": "SET", "v": message]),
         ("ServerModels.Response.ClientSettings", ["version": 0, "settings": [:]]),
-        ("ServerModels.Response.Challenge", ["algorithm": "SHA256", "challenge": String(repeating: "0", count: 64),
+        ("ServerModels.Response.Challenge", ["algorithm": "SHA-256", "challenge": String(repeating: "0", count: 64),
             "salt": "local-api-handshake", "signature": "local-only", "difficulty": 0,
             "expire_at": 1_900_000_000_000, "expire_after": 3_600_000]),
         ("ServerModels.Response.ChatSessionFetchPage", ["chat_sessions": [session], "has_more": false]),
         ("ServerModels.Response.ChatHistoryMessages", ["chat_session": session, "chat_messages": [message],
-            "cache_control": "replace", "cache_reset_at": 0])
+            "cache_control": "REPLACE", "cache_reset_at": 0])
     ]
     var results: [[String: Any]] = []
     for (name, value) in fixtures {

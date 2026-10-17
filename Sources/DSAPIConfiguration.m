@@ -66,7 +66,8 @@ static NSError *DSConfigError(NSString *description) {
         }
     }
     if (status != errSecSuccess) {
-        if (error) *error = DSConfigError(@"无法将 API Key 保存到设备钥匙串。");
+        if (error) *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status
+            userInfo:@{NSLocalizedDescriptionKey:@"无法将 API Key 保存到设备钥匙串。"}];
         return NO;
     }
     [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,

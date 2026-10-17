@@ -251,7 +251,10 @@ def probe():
     # Simulator-only ad-hoc signing; no developer certificate or account involved.
     # Device App Group entitlements are restricted on the macOS host and cannot
     # be granted by this ad-hoc test signature. Do not copy them into it.
-    entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
+    entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True,
+        'application-identifier': 'DSAPITEST.com.deepseek.chat',
+        'com.apple.developer.team-identifier': 'DSAPITEST',
+        'keychain-access-groups': ['DSAPITEST.com.deepseek.chat']}
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
@@ -343,6 +346,11 @@ def probe():
     if not report['process_alive']:
         raise RuntimeError('Converted original app did not remain running')
     collect_ui_observations(device)
+    if adapter_enabled and runtime_report.is_file():
+        shutil.copy2(runtime_report, diagnostics/'runtime-probe-after-ui.json')
+    after_logs = run(['xcrun', 'simctl', 'spawn', device, 'log', 'show', '--last', '3m', '--style', 'compact',
+        '--predicate', 'process == \"DeepSeek Chat\"'], timeout=60, check=False)
+    (diagnostics/'application-after-ui.log').write_text(after_logs.stdout)
     report['result'] = 'original binary remained running; screenshots require inspection'
 
 

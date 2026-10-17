@@ -14,7 +14,7 @@ static void DSPrepareMockConfiguration(void) {
     NSError *error = nil;
     BOOL saved = [configuration save:&error];
     [NSUserDefaults.standardUserDefaults setBool:saved forKey:@"DSAPIAdapter.testConfigurationSaved"];
-    if (!saved) [NSUserDefaults.standardUserDefaults setObject:error.localizedDescription ?: @"unknown"
+    if (!saved) [NSUserDefaults.standardUserDefaults setObject:[NSString stringWithFormat:@"%@ (%@:%ld)", error.localizedDescription ?: @"unknown", error.domain, (long)error.code]
         forKey:@"DSAPIAdapter.testConfigurationError"];
 }
 __attribute__((constructor)) static void DSInstallRuntimeProbe(void) {

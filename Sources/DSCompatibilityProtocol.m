@@ -143,7 +143,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     } else if ([path hasSuffix:@"/chat/history_messages"]) {
         NSDictionary *session = [store session:sid];
         if (!session) { [self fail:@"本地会话不存在。"]; return; }
-        [self json:@{@"cache_control":@"replace",@"chat_messages":[store messages:sid],@"chat_session":session,@"cache_reset_at":@0}];
+        [self json:@{@"cache_control":@"REPLACE",@"chat_messages":[store messages:sid],@"chat_session":session,@"cache_reset_at":@0}];
     } else if ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"]) {
         [self chat:p];
     } else if ([path hasSuffix:@"/chat/stop_stream"]) {
@@ -161,7 +161,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         NSData *input = [prefix dataUsingEncoding:NSUTF8StringEncoding]; uint8_t digest[CC_SHA256_DIGEST_LENGTH];
         CC_SHA256(input.bytes,(CC_LONG)input.length,digest);
         NSMutableString *hex = [NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [hex appendFormat:@"%02x",digest[i]];
-        [self json:@{@"challenge":@{@"algorithm":@"SHA256",@"challenge":hex,@"salt":salt,@"signature":@"local-only",
+        [self json:@{@"challenge":@{@"algorithm":@"SHA-256",@"challenge":hex,@"salt":salt,@"signature":@"local-only",
             @"difficulty":@0,@"expire_at":@(expires),@"expire_after":@3600000}}];
     } else if ([path hasSuffix:@"/users/current"]) {
         NSMutableDictionary *u = [[self localUser] mutableCopy]; u[@"user"] = [self localUser]; [self json:u];
