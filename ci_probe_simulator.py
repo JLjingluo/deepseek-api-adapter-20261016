@@ -25,7 +25,13 @@ report['packaged_adapter'] = packaged_adapter
 
 
 def run(args, *, timeout=120, check=True):
-    result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+    try:
+        result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        output=error.stdout or ''
+        if isinstance(output,bytes): output=output.decode(errors='replace')
+        (diagnostics/('timeout-'+pathlib.Path(str(args[0])).name+'.log')).write_text(output[-128000:])
+        raise
     print('$', ' '.join(str(x) for x in args), flush=True)
     print(result.stdout[-16000:], flush=True)
     if check and result.returncode:
@@ -167,13 +173,19 @@ def collect_ui_observations(device):
     results = root/'UIResult.xcresult'
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
-        '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests/testNativeApp',
+        '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests',
         'test']
     conditions=[]
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
     if conditions: arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS='+' '.join(conditions))
-    outcome = run(arguments, timeout=480, check=False)
+    try:
+        outcome = run(arguments, timeout=480, check=False)
+    except subprocess.TimeoutExpired as error:
+        output=error.stdout or ''
+        if isinstance(output,bytes): output=output.decode(errors='replace')
+        outcome=subprocess.CompletedProcess(arguments,124,output)
+        report['ui_test_timed_out']=True
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
     report['ui_test_scope'] = ('startup, local API request/render assertion and optional settings navigation'

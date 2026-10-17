@@ -1,7 +1,7 @@
 import XCTest
 
 final class CaptureTests: XCTestCase {
-    func testNativeApp() throws {
+    private func openNativeApp() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "com.deepseek.chat")
         app.launch()
@@ -29,11 +29,20 @@ final class CaptureTests: XCTestCase {
         }
         capture(app, "after-optional-welcome")
         print("DSAPI_UI_HIERARCHY_BEGIN\n" + String(app.debugDescription.prefix(24000)) + "\nDSAPI_UI_HIERARCHY_END")
+        return app
+    }
+
+    func testNativeSettings() throws {
+        let app = openNativeApp()
         let settingsVisited = inspectSettings(app)
         print("DSAPI_API_SETTINGS_VISITED=\(settingsVisited)")
         #if DSAPI_ADAPTER_UI
         XCTAssertTrue(settingsVisited, "The settings entry and API configuration must both be reachable")
         #endif
+    }
+
+    func testNativeApp() throws {
+        let app = openNativeApp()
         #if DSAPI_MOCK_UI
         app.terminate()
         app.launch()
@@ -70,6 +79,14 @@ final class CaptureTests: XCTestCase {
         capture(app, "mock-api-reply")
         print("DSAPI_CHAT_HIERARCHY_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_CHAT_HIERARCHY_END")
         XCTAssertTrue(received, "The original UI did not render the mock API reply")
+        let readAloud = app.buttons["DSAPI.ReadAloud"].firstMatch
+        XCTAssertTrue(readAloud.waitForExistence(timeout: 10), "Original read-aloud button is missing")
+        readAloud.tap()
+        Thread.sleep(forTimeInterval: 1)
+        capture(app, "read-aloud-started")
+        print("DSAPI_READ_ALOUD_LABEL=\(readAloud.label)")
+        readAloud.tap()
+        capture(app, "read-aloud-stopped")
         #endif
     }
 

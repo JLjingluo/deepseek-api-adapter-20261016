@@ -46,7 +46,7 @@ static void refreshSpeechIcons(void) {
     UIView *parent=gesture.view;
     while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
     long long identifier=parent ? DSAPINativeSpeechMessageID((__bridge void *)parent) : 0;
-    if (!identifier) return;
+    if (!identifier) { [NSUserDefaults.standardUserDefaults setObject:@"missing-message-context" forKey:@"DSAPIAdapter.speechStatus"]; return; }
     if (self.messageID==identifier && self.synth.speaking) {
         [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.messageID=0; refreshSpeechIcons(); return;
     }
@@ -61,12 +61,16 @@ static void refreshSpeechIcons(void) {
     AVSpeechUtterance *utterance=[AVSpeechUtterance speechUtteranceWithString:text];
     utterance.voice=[AVSpeechSynthesisVoice voiceWithIdentifier:DSSelectedLocalVoice()];
     self.messageID=identifier; self.activeUtterance=utterance; [self.synth speakUtterance:utterance];
+    [NSUserDefaults.standardUserDefaults setObject:@"requested" forKey:@"DSAPIAdapter.speechStatus"];
     [NSUserDefaults.standardUserDefaults setInteger:identifier forKey:@"DSAPIAdapter.lastSpokenMessageID"];
     refreshSpeechIcons();
 }
-- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didStartSpeechUtterance:(AVSpeechUtterance *)utterance { refreshSpeechIcons(); }
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didStartSpeechUtterance:(AVSpeechUtterance *)utterance {
+    [NSUserDefaults.standardUserDefaults setObject:@"started" forKey:@"DSAPIAdapter.speechStatus"]; refreshSpeechIcons();
+}
 - (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didFinishSpeechUtterance:(AVSpeechUtterance *)utterance {
-    if (utterance==self.activeUtterance) { self.messageID=0; self.activeUtterance=nil; }
+    if (utterance==self.activeUtterance) { self.messageID=0; self.activeUtterance=nil;
+        [NSUserDefaults.standardUserDefaults setObject:@"finished" forKey:@"DSAPIAdapter.speechStatus"]; }
     refreshSpeechIcons();
 }
 - (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didCancelSpeechUtterance:(AVSpeechUtterance *)utterance { refreshSpeechIcons(); }

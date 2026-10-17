@@ -84,6 +84,7 @@ public func runRuntimeProbe() {
         "native_language": UserDefaults.standard.string(forKey: "DSAPIAdapter.nativeLanguage") ?? "not inferred",
         "speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechVoice") ?? "device default",
         "last_spoken_message_id": UserDefaults.standard.integer(forKey: "DSAPIAdapter.lastSpokenMessageID"),
+        "speech_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechStatus") ?? "not started",
         "mock_configuration_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.testConfigurationError") ?? "none",
         "fixtures": results, "views": views]
     if let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
