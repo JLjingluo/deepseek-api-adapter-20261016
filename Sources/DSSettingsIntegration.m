@@ -11,6 +11,9 @@ static void (*originalFooterLayout)(id,SEL);
 static void (*originalSelect)(id,SEL,UITableView *,NSIndexPath *);
 static void (*originalDisplay)(id,SEL,UITableView *,UITableViewCell *,NSIndexPath *);
 static CGFloat (*originalHeight)(id,SEL,UITableView *,NSIndexPath *);
+static CGFloat (*originalHeaderHeight)(id,SEL,UITableView *,NSInteger);
+static CGFloat (*originalSectionFooterHeight)(id,SEL,UITableView *,NSInteger);
+static void (*originalHeaderDisplay)(id,SEL,UITableView *,UIView *,NSInteger);
 static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey;
 extern void *DSAPICopySettingsBackingSource(const void *source);
 static IMP replaceMethod(Class cls,SEL selector,IMP replacement,const char *fallback) {
@@ -49,9 +52,32 @@ static BOOL removedItem(NSString *item) {
         if (isItem(item,name)) return YES;
     return NO;
 }
+static BOOL removedSection(UITableView *table,NSInteger section) {
+    NSInteger count=[table numberOfRowsInSection:section];
+    if (!count) return NO;
+    for (NSInteger row=0;row<count;row++) if (!removedItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:section]))) return NO;
+    return YES;
+}
+static CGFloat headerHeight(id self,SEL selector,UITableView *table,NSInteger section) {
+    if (removedSection(table,section)) return CGFLOAT_MIN;
+    return originalHeaderHeight ? originalHeaderHeight(self,selector,table,section) : UITableViewAutomaticDimension;
+}
+static CGFloat sectionFooterHeight(id self,SEL selector,UITableView *table,NSInteger section) {
+    if (removedSection(table,section)) return CGFLOAT_MIN;
+    return originalSectionFooterHeight ? originalSectionFooterHeight(self,selector,table,section) : UITableViewAutomaticDimension;
+}
 static void gatherLabels(UIView *root,NSMutableArray *labels) {
     if ([root isKindOfClass:UILabel.class]) [labels addObject:root];
     for (UIView *view in root.subviews) gatherLabels(view,labels);
+}
+static void headerDisplay(id self,SEL selector,UITableView *table,UIView *header,NSInteger section) {
+    if (originalHeaderDisplay) originalHeaderDisplay(self,selector,table,header,section);
+    for (NSInteger row=0;row<[table numberOfRowsInSection:section];row++) {
+        if (!isItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:section]),@"accountDataConfig")) continue;
+        NSMutableArray *labels=[NSMutableArray array]; gatherLabels(header,labels);
+        for (UILabel *label in labels) if (label.text.length) label.text=@"API";
+        break;
+    }
 }
 static void refreshTables(UIView *root) {
     if ([root isKindOfClass:UITableView.class]) [(UITableView *)root reloadData];
@@ -105,6 +131,7 @@ static CGFloat profileHeight(id self,SEL selector,UITableView *table,NSIndexPath
     return originalHeight ? originalHeight(self,selector,table,path) : UITableViewAutomaticDimension;
 }
 static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCell *cell,NSIndexPath *path) {
+    if ([cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"]) cell.accessibilityLabel=nil;
     for (NSArray *entry in objc_getAssociatedObject(cell,&cellStateKey)) ((UIView *)entry[0]).hidden=[entry[1] boolValue];
     [objc_getAssociatedObject(cell,&cellOverlayKey) removeFromSuperview];
     objc_setAssociatedObject(cell,&cellStateKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -118,7 +145,16 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
     #endif
     if ([cell.accessibilityIdentifier hasPrefix:@"DSAPI."]) cell.accessibilityIdentifier=nil;
     if (isItem(item,@"ttsVoice")) cell.accessibilityIdentifier=@"DSAPI.VoicePicker";
+    if (isItem(item,@"aboutCheckUpdate")) cell.accessibilityIdentifier=@"DSAPI.RepositoryUpdates";
     if (!isItem(item,@"accountDataConfig")) return;
+    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell.contentView,labels);
+    UILabel *nativeTitle=nil;
+    for (UILabel *label in labels) if (label.text.length && !label.hidden) { nativeTitle=label; break; }
+    if (nativeTitle) {
+        nativeTitle.text=DSAPILocalized(@"usage");
+        cell.accessibilityIdentifier=@"DSAPI.Usage"; cell.accessibilityLabel=DSAPILocalized(@"usage");
+        return;
+    }
     NSMutableArray *states=[NSMutableArray array];
     for (UIView *view in cell.contentView.subviews) { [states addObject:@[view,@(view.hidden)]]; view.hidden=YES; }
     objc_setAssociatedObject(cell,&cellStateKey,states,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -127,7 +163,7 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
     label.translatesAutoresizingMaskIntoConstraints=NO;
     [cell.contentView addSubview:label];
     objc_setAssociatedObject(cell,&cellOverlayKey,label,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [NSLayoutConstraint activateConstraints:@[[label.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor],
+    [NSLayoutConstraint activateConstraints:@[[label.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor constant:34],
         [label.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]]];
     cell.accessibilityIdentifier=@"DSAPI.Usage"; cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
 }
@@ -175,6 +211,9 @@ void DSInstallSettingsIntegration(void) {
         originalSelect=(void *)replaceMethod(profile,@selector(tableView:didSelectRowAtIndexPath:),(IMP)profileSelect,"v@:@@");
         originalDisplay=(void *)replaceMethod(profile,@selector(tableView:willDisplayCell:forRowAtIndexPath:),(IMP)profileDisplay,"v@:@@@");
         originalHeight=(void *)replaceMethod(profile,@selector(tableView:heightForRowAtIndexPath:),(IMP)profileHeight,"d@:@@");
+        originalHeaderHeight=(void *)replaceMethod(profile,@selector(tableView:heightForHeaderInSection:),(IMP)headerHeight,"d@:@q");
+        originalSectionFooterHeight=(void *)replaceMethod(profile,@selector(tableView:heightForFooterInSection:),(IMP)sectionFooterHeight,"d@:@q");
+        originalHeaderDisplay=(void *)replaceMethod(profile,@selector(tableView:willDisplayHeaderView:forSection:),(IMP)headerDisplay,"v@:@@q");
     }
     Class footer=NSClassFromString(@"_TtCC13DeepSeek_Chat25SessionListViewController10FooterView");
     originalFooterLayout=(void *)replaceMethod(footer,@selector(layoutSubviews),(IMP)footerLayout,"v@:");

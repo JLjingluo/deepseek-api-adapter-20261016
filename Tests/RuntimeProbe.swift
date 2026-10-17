@@ -97,6 +97,8 @@ public func runRuntimeProbe() {
         "speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechVoice") ?? "device default",
         "last_spoken_message_id": UserDefaults.standard.integer(forKey: "DSAPIAdapter.lastSpokenMessageID"),
         "speech_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechStatus") ?? "not started",
+        "last_speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastSpeechVoice") ?? "not selected",
+        "last_voice_demo": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastVoiceDemo") ?? [:],
         "observed_native_client_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.observedNativeClientStatus") ?? "not observed",
         "actual_wire_valid": Dictionary(uniqueKeysWithValues: ["ready", "title", "delta", "finish"].map {
             ($0, UserDefaults.standard.object(forKey: "DSAPIAdapter.actualWireValid." + $0) ?? "not recorded")

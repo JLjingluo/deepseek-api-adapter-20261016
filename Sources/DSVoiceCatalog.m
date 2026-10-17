@@ -17,7 +17,8 @@ NSDictionary *DSLocalVoiceConfiguration(void) {
     NSString *language=[[DSOriginalLocalized(@"locale") stringByReplacingOccurrencesOfString:@"_" withString:@"-"] componentsSeparatedByString:@"-"].firstObject;
     NSMutableArray *voices=[NSMutableArray array];
     for (AVSpeechSynthesisVoice *voice in AVSpeechSynthesisVoice.speechVoices) {
-        if (![voice.identifier isEqual:selected] && (![voice.language hasPrefix:language] || voice.quality!=AVSpeechSynthesisVoiceQualityDefault)) continue;
+        BOOL languageMatches=[voice.language hasPrefix:language] || [voice.language hasPrefix:@"zh"] || [voice.language hasPrefix:@"en"];
+        if (![voice.identifier isEqual:selected] && (!languageMatches || voice.quality!=AVSpeechSynthesisVoiceQualityDefault)) continue;
         NSString *escaped=[voice.identifier stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
         NSString *url=[@"https://chat.deepseek.com/api/v0/chat/tts/local_demo/" stringByAppendingString:escaped];
         NSMutableDictionary *names=[NSMutableDictionary dictionary], *descriptions=[NSMutableDictionary dictionary], *demos=[NSMutableDictionary dictionary];
@@ -37,6 +38,7 @@ NSDictionary *DSLocalVoiceConfiguration(void) {
 @property(nonatomic,strong) NSURL *url;
 @property(nonatomic,copy) void (^completion)(NSData *,NSError *);
 @property(nonatomic) BOOL finished;
+@property(nonatomic) NSUInteger frames;
 - (void)finish:(NSError *)error;
 @end
 static NSMutableSet *DSDemoJobs(void) {
@@ -47,9 +49,11 @@ static NSMutableSet *DSDemoJobs(void) {
     @synchronized (self) {
         if (self.finished) return; self.finished=YES; self.file=nil;
         NSData *data=error ? nil : [NSData dataWithContentsOfURL:self.url];
+        NSError *effective=error ?: (data.length ? nil : [NSError errorWithDomain:@"DSAPI.Speech" code:1 userInfo:nil]);
         dispatch_async(dispatch_get_main_queue(),^{
             [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.synth=nil;
-            if (self.completion) self.completion(data,error ?: (data.length ? nil : [NSError errorWithDomain:@"DSAPI.Speech" code:1 userInfo:nil]));
+            [NSUserDefaults.standardUserDefaults setObject:@{@"frames":@(self.frames),@"bytes":@(data.length),@"error_code":@(effective.code)} forKey:@"DSAPIAdapter.lastVoiceDemo"];
+            if (self.completion) self.completion(data,effective);
             self.completion=nil; [NSFileManager.defaultManager removeItemAtURL:self.url error:NULL]; [DSDemoJobs() removeObject:self];
         });
     }
@@ -69,6 +73,7 @@ void DSGenerateLocalVoiceDemo(NSString *identifier,void (^completion)(NSData *,N
             if (![buffer isKindOfClass:AVAudioPCMBuffer.class]) { [job finish:[NSError errorWithDomain:@"DSAPI.Speech" code:3 userInfo:nil]]; return; }
             AVAudioPCMBuffer *pcm=(id)buffer;
             if (!pcm.frameLength) { [job finish:nil]; return; }
+            job.frames+=pcm.frameLength;
             NSError *error=nil;
             if (!job.file) job.file=[[AVAudioFile alloc] initForWriting:job.url settings:pcm.format.settings commonFormat:pcm.format.commonFormat interleaved:pcm.format.interleaved error:&error];
             if (!job.file || ![job.file writeFromBuffer:pcm error:&error]) [job finish:error ?: [NSError errorWithDomain:@"DSAPI.Speech" code:4 userInfo:nil]];

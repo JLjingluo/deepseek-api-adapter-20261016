@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <NaturalLanguage/NaturalLanguage.h>
 #import <objc/runtime.h>
 #import "DSVoiceCatalog.h"
 #import "DSLocalStore.h"
@@ -14,6 +15,7 @@ static NSHashTable *speechViews;
 @property(nonatomic,strong) AVSpeechUtterance *activeUtterance;
 + (instancetype)shared;
 - (void)tap:(UITapGestureRecognizer *)gesture;
+- (void)playView:(UIView *)view;
 @end
 static UIImageView *speechIcon(UIView *view) {
     for (UIView *child in view.subviews) {
@@ -43,12 +45,16 @@ static void refreshSpeechIcons(void) {
         speaker.synth.usesApplicationAudioSession=NO; speaker.synth.delegate=speaker; }); return speaker;
 }
 - (void)tap:(UITapGestureRecognizer *)gesture {
-    UIView *parent=gesture.view;
+    [self playView:gesture.view];
+}
+- (void)playView:(UIView *)view {
+    UIView *parent=view;
     while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
     long long identifier=parent ? DSAPINativeSpeechMessageID((__bridge void *)parent) : 0;
     if (!identifier) { [NSUserDefaults.standardUserDefaults setObject:@"missing-message-context" forKey:@"DSAPIAdapter.speechStatus"]; return; }
     if (self.messageID==identifier && self.synth.speaking) {
-        [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.messageID=0; refreshSpeechIcons(); return;
+        [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.messageID=0; self.activeUtterance=nil;
+        [NSUserDefaults.standardUserDefaults setObject:@"stopped" forKey:@"DSAPIAdapter.speechStatus"]; refreshSpeechIcons(); return;
     }
     NSDictionary *message=nil;
     for (NSDictionary *session in DSLocalStore.shared.sessions) {
@@ -59,10 +65,22 @@ static void refreshSpeechIcons(void) {
     if (!text.length) return;
     [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
     AVSpeechUtterance *utterance=[AVSpeechUtterance speechUtteranceWithString:text];
-    utterance.voice=[AVSpeechSynthesisVoice voiceWithIdentifier:DSSelectedLocalVoice()];
+    AVSpeechSynthesisVoice *selected=[AVSpeechSynthesisVoice voiceWithIdentifier:DSSelectedLocalVoice()];
+    NLLanguageRecognizer *recognizer=[NLLanguageRecognizer new];
+    NSRange sample=[text rangeOfComposedCharacterSequencesForRange:NSMakeRange(0,MIN(text.length,2000))];
+    [recognizer processString:[text substringWithRange:sample]];
+    NSString *language=recognizer.dominantLanguage;
+    NSString *base=[language componentsSeparatedByString:@"-"].firstObject;
+    if (base.length && ![base isEqual:@"und"] && ![selected.language hasPrefix:base]) {
+        NSString *voiceLanguage=@{@"zh-Hans":@"zh-CN",@"zh-Hant":@"zh-TW",@"yue":@"zh-HK"}[language] ?: language;
+        AVSpeechSynthesisVoice *matching=[AVSpeechSynthesisVoice voiceWithLanguage:voiceLanguage];
+        if (matching) selected=matching;
+    }
+    utterance.voice=selected;
     self.messageID=identifier; self.activeUtterance=utterance; [self.synth speakUtterance:utterance];
     [NSUserDefaults.standardUserDefaults setObject:@"requested" forKey:@"DSAPIAdapter.speechStatus"];
     [NSUserDefaults.standardUserDefaults setInteger:identifier forKey:@"DSAPIAdapter.lastSpokenMessageID"];
+    [NSUserDefaults.standardUserDefaults setObject:selected.identifier ?: @"default" forKey:@"DSAPIAdapter.lastSpeechVoice"];
     refreshSpeechIcons();
 }
 - (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didStartSpeechUtterance:(AVSpeechUtterance *)utterance {
@@ -87,6 +105,7 @@ static void localSpeechLayout(id self,SEL selector) {
     }
     refreshSpeechIcons();
 }
+static BOOL activateLocalSpeech(id self,SEL selector) { [DSNativeSpeaker.shared playView:self]; return YES; }
 void DSInstallLocalSpeechUI(void) {
     speechViews=[NSHashTable weakObjectsHashTable];
     Class cls=NSClassFromString(@"_TtC13DeepSeek_Chat13TTSButtonView");
@@ -95,4 +114,6 @@ void DSInstallLocalSpeechUI(void) {
     originalSpeechLayout=(void *)method_getImplementation(method);
     if (!class_addMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method)))
         class_replaceMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method));
+    if (!class_addMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:"))
+        class_replaceMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:");
 }

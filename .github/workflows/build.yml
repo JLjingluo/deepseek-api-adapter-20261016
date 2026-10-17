@@ -48,7 +48,7 @@ jobs:
           xcrun --sdk iphoneos swiftc -sdk "$SDK" -target arm64-apple-ios18.0 -swift-version 5 \
             -O -emit-library Sources/DSRuntimeValidation.swift build/objects/*.o \
             -Xlinker -install_name -Xlinker @rpath/DSAPIAdapter.dylib \
-            -framework Foundation -framework UIKit -framework Security -framework AVFoundation \
+            -framework Foundation -framework UIKit -framework Security -framework AVFoundation -framework NaturalLanguage \
             -o build/DSAPIAdapter.dylib
           codesign --force --sign - build/DSAPIAdapter.dylib
           file build/DSAPIAdapter.dylib
@@ -73,7 +73,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           TAG="candidate-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" --target "$GITHUB_REF_NAME" --prerelease \
+          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease \
             --title "Experimental unsigned IPA ${GITHUB_RUN_NUMBER}" \
             --notes "实验性未签名整包，需自行签名。构建及资源校验不代表启动、UI 或功能验收通过；不能称为 100% 等价成品。附件、搜索、语音与云分享仍有未实现部分。请阅读 verification.json。" \
             build/DSAPIAdapter.dylib build/SHA256SUMS build/*.ipa build/*.verification.json
