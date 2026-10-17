@@ -146,6 +146,8 @@ static void footerLayout(id self,SEL selector) {
     if (![label.text isEqual:text]) label.text=text;
     footer.accessibilityLabel=text; footer.accessibilityIdentifier=@"DSAPI.SettingsEntry";
 }
+static NSString *footerAccessibilityLabel(id self,SEL selector) { return DSAPILocalized(@"settings"); }
+static NSArray *footerAccessibilityElements(id self,SEL selector) { return @[]; }
 void DSInstallSettingsIntegration(void) {
     Class profile=NSClassFromString(@"_TtC13DeepSeek_Chat21ProfileViewController");
     if (profile) {
@@ -158,4 +160,6 @@ void DSInstallSettingsIntegration(void) {
     }
     Class footer=NSClassFromString(@"_TtCC13DeepSeek_Chat25SessionListViewController10FooterView");
     originalFooterLayout=(void *)replaceMethod(footer,@selector(layoutSubviews),(IMP)footerLayout,"v@:");
+    replaceMethod(footer,@selector(accessibilityLabel),(IMP)footerAccessibilityLabel,"@@:");
+    replaceMethod(footer,@selector(accessibilityElements),(IMP)footerAccessibilityElements,"@@:");
 }

@@ -1,5 +1,6 @@
 #import "DSAPIConfiguration.h"
 #import <Security/Security.h>
+#import "DSAPILocalization.h"
 
 static NSString *const DSConfigKey = @"DSAPIAdapter.configuration.v1";
 static NSDictionary *DSKeyQuery(void) {
@@ -34,7 +35,7 @@ static NSError *DSConfigError(NSString *description) {
     NSURLComponents *components = [NSURLComponents componentsWithString:base];
     if (![components.scheme.lowercaseString isEqualToString:@"https"] || !components.host.length ||
         components.user || components.password || components.query || components.fragment) {
-        if (error) *error = DSConfigError(@"Base URL 必须是 HTTPS 地址，且不能包含用户名、密码、查询参数或片段。");
+        if (error) *error = DSConfigError(DSAPILocalized(@"invalidURL"));
         return nil;
     }
     NSString *path = components.path;
@@ -47,7 +48,7 @@ static NSError *DSConfigError(NSString *description) {
     if (![self completionURL:error]) return NO;
     if (!self.model.length || self.timeout < 10 || self.timeout > 3600 ||
         [self.apiKey rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet].location != NSNotFound) {
-        if (error) *error = DSConfigError(@"请填写模型名；超时范围为 10–3600 秒；API Key 不能包含换行。");
+        if (error) *error = DSConfigError(DSAPILocalized(@"invalidFields"));
         return NO;
     }
     NSData *keyData = [self.apiKey dataUsingEncoding:NSUTF8StringEncoding];
@@ -67,7 +68,7 @@ static NSError *DSConfigError(NSString *description) {
     }
     if (status != errSecSuccess) {
         if (error) *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status
-            userInfo:@{NSLocalizedDescriptionKey:@"无法将 API Key 保存到设备钥匙串。"}];
+            userInfo:@{NSLocalizedDescriptionKey:DSAPILocalized(@"keychainError")}];
         return NO;
     }
     [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,

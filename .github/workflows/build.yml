@@ -19,7 +19,7 @@ jobs:
         run: |
           mkdir -p build
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSStreamDecoder.m Sources/DSAPIConfiguration.m Tests/StreamTests.m \
+            Sources/DSStreamDecoder.m Sources/DSAPIConfiguration.m Sources/DSAPILocalization.m Tests/StreamTests.m \
             -framework Foundation -framework Security -o build/StreamTests
           build/StreamTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
@@ -28,11 +28,11 @@ jobs:
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
             Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSOpenAIClient.m Sources/DSUsageStore.m \
             Sources/DSVoiceCatalog.m Sources/DSAPILocalization.m \
-            Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ProtocolTests.m \
+            Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ProtocolTests.m \
             -framework Foundation -framework Security -framework AVFoundation -o build/ProtocolTests
           build/ProtocolTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ClientTests.m \
+            Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ClientTests.m \
             -framework Foundation -framework Security -o build/ClientTests
           build/ClientTests
       - name: Compile iOS arm64 library
