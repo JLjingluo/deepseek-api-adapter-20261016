@@ -53,6 +53,11 @@ final class CaptureTests: XCTestCase {
         }
         let reply = app.descendants(matching: .any).matching(NSPredicate(
             format: "label CONTAINS %@ OR value CONTAINS %@", "流式输出正常", "流式输出正常")).firstMatch
+        let firstPart = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS %@ OR value CONTAINS %@", "首段流式回复", "首段流式回复")).firstMatch
+        XCTAssertTrue(firstPart.waitForExistence(timeout: 15), "The first streamed fragment was not rendered")
+        capture(app, "streaming-first-part")
+        XCTAssertFalse(reply.exists, "The first fragment was only visible after the complete reply")
         let received = reply.waitForExistence(timeout: 25)
         capture(app, "mock-api-reply")
         print("DSAPI_CHAT_HIERARCHY_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_CHAT_HIERARCHY_END")

@@ -69,14 +69,14 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             self.send_header('Connection', 'close')
             self.end_headers()
             try:
-                for text in ['API 接入测试', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']:
+                for index, text in enumerate(['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']):
                     event = {'id': 'ci-mock', 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]}
                     wire = ('data: '+json.dumps(event, ensure_ascii=False)+'\n\n').encode()
                     # Deliberately fragment UTF-8 bytes and JSON across reads.
                     for offset in range(0, len(wire), 13):
                         self.wfile.write(wire[offset:offset+13])
                         self.wfile.flush()
-                    time.sleep(0.12)
+                    time.sleep(5 if index == 0 else 0.12)
                 self.wfile.write(b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
