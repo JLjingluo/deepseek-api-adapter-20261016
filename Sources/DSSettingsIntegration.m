@@ -99,7 +99,8 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
     NSMutableArray *observed=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.nativeSettingsItems"] mutableCopy] ?: [NSMutableArray array];
     if (item.length && ![observed containsObject:item]) { [observed addObject:item]; [NSUserDefaults.standardUserDefaults setObject:observed forKey:@"DSAPIAdapter.nativeSettingsItems"]; }
     #endif
-    if ([cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"]) cell.accessibilityIdentifier=nil;
+    if ([cell.accessibilityIdentifier hasPrefix:@"DSAPI."]) cell.accessibilityIdentifier=nil;
+    if (isItem(item,@"ttsVoice")) cell.accessibilityIdentifier=@"DSAPI.VoicePicker";
     if (!isItem(item,@"accountDataConfig")) return;
     NSMutableArray *states=[NSMutableArray array];
     for (UIView *view in cell.contentView.subviews) { [states addObject:@[view,@(view.hidden)]]; view.hidden=YES; }
@@ -123,7 +124,7 @@ static void footerLayout(id self,SEL selector) {
         icon.tintColor=UIColor.secondaryLabelColor; icon.contentMode=UIViewContentModeScaleAspectFit;
         UILabel *label=[UILabel new]; label.tag=7401; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         label.textColor=UIColor.labelColor; label.adjustsFontForContentSizeCategory=YES;
-        UIImageView *arrow=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]]; arrow.tintColor=UIColor.tertiaryLabelColor;
+        UIImageView *arrow=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward"]]; arrow.tintColor=UIColor.tertiaryLabelColor;
         for (UIView *view in @[icon,label,arrow]) { view.translatesAutoresizingMaskIntoConstraints=NO; [overlay addSubview:view]; }
         [footer addSubview:overlay];
         [NSLayoutConstraint activateConstraints:@[[overlay.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],

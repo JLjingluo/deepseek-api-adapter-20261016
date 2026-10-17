@@ -122,7 +122,8 @@ final class CaptureTests: XCTestCase {
                 app.navigationBars.buttons.firstMatch.tap()
                 inspectNativePreferences(app)
                 #endif
-                let api = app.buttons["API"].firstMatch
+                let knownAPI = app.buttons["DSAPI.APISettings"].firstMatch
+                let api = knownAPI.exists ? knownAPI : app.buttons["API"].firstMatch
                 if api.exists && api.isHittable {
                     api.tap()
                     XCTAssertTrue(app.textFields["Base URL"].waitForExistence(timeout: 5))
@@ -136,6 +137,22 @@ final class CaptureTests: XCTestCase {
     }
 
     private func inspectNativePreferences(_ app: XCUIApplication) {
+        let voice = app.cells["DSAPI.VoicePicker"].firstMatch
+        if voice.exists && voice.isHittable {
+            voice.tap()
+            let choice = app.cells["tts-voice-picker-cell"].firstMatch
+            let opened = choice.waitForExistence(timeout: 15)
+            capture(app, "original-voice-picker")
+            print("DSAPI_VOICE_PICKER_BEGIN\n" + String(app.debugDescription.suffix(18000)) + "\nDSAPI_VOICE_PICKER_END")
+            XCTAssertTrue(opened, "Original voice picker did not load device voices")
+            if opened { choice.swipeLeft(); Thread.sleep(forTimeInterval: 1) }
+            let confirm = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Confirm", "确认")).firstMatch
+            if confirm.exists && confirm.isHittable { confirm.tap() }
+            else {
+                let close = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Close", "关闭")).firstMatch
+                if close.exists && close.isHittable { close.tap() }
+            }
+        }
         for names in [["Font size", "字体大小", "字體大小"], ["Personalization", "个性化", "個人化"], ["Language", "语言", "語言"]] {
             guard let entry = names.map({ app.staticTexts[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) else { continue }
             entry.tap()
