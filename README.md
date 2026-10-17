@@ -2,22 +2,34 @@
 
 Native iOS adapter modules under development for a user-supplied DeepSeek 2.6.2 application.
 
-**This repository does not currently produce a working modified IPA.** The
-original application's service boundaries and local account/session context must
-still be integrated and tested. A compiled library alone does not complete that work.
+**Experimental integration candidate, not a verified replacement application.**
+The modules now include runtime routing for the user-supplied 2.6.2 binary.
+Compilation and component tests do not establish that the original app starts
+or that its UI and all features behave correctly on an iPhone.
 
 Current modules:
 
 - HTTPS Base URL, API key, primary/reasoning model, system prompt and timeout configuration.
 - Device-only Keychain storage for the API key.
-- Native settings controller, awaiting insertion into the original settings page.
+- Native settings controller and an experimental original-settings entry hook.
 - Streaming OpenAI-compatible HTTP client and incremental SSE parser.
+- Local conversation persistence, message branches, titles, pinning and deletion.
+- Experimental conversion of API text/reasoning deltas into the original message events.
+- Runtime validation of local identity data using the original app's decoder.
 - GitHub Actions compilation on macOS and tests of fragmentation and completion errors.
 
-The project contains no original IPA, application resources, credentials or
+The source tree contains no original IPA, application resources, credentials or
 original source code. The GitHub workflow builds only the adapter library.
-No original UI has been replaced. Original-app integration is not yet implemented.
+The integration preserves the original binary's UI implementation and resources;
+it has not been visually compared on a device. It reroutes account-dependent
+startup through a local context. Original compiled account/login code remains in
+the supplied application: this is **not** physical removal of those modules.
 
 OpenAI-compatible text chat alone does not supply the original app's search,
 cloud sharing, voice calls or attachment services. Those capabilities need separate
-compatible services before equivalent behavior can be claimed.
+compatible services before equivalent behavior can be claimed. Unsupported routes
+fail explicitly instead of falling back to the original conversation service.
+
+Limitations: original-app startup, runtime type lookup, event conversion, settings
+hooks, background behavior, original widgets and actual API requests have not been
+verified on an iPhone. These must not be described as passed tests.

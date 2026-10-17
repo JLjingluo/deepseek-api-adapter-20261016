@@ -44,6 +44,7 @@
         options:0 error:&error];
     if (!body) { [self complete:nil error:error]; return; }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [NSURLProtocol setProperty:@YES forKey:@"DSAPI.DirectAPI" inRequest:request];
     request.HTTPMethod = @"POST"; request.HTTPBody = body;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"text/event-stream" forHTTPHeaderField:@"Accept"];
