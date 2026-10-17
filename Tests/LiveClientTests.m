@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "DSOpenAIClient.h"
+#import "DSUsageStore.h"
 
 static NSMutableArray *results;
 static BOOL runCase(NSString *name, NSString *key, NSString *model, BOOL thinking,
@@ -54,8 +55,14 @@ int main(void) {
             @[@{@"role":@"user",@"content":@"Count from 1 to 100, one number per line."}],@"",@"",NSURLErrorCancelled,YES);
         passed &= runCase(@"native_invalid_key",@"invalid-ci-key",@"deepseek-flash",NO,simple,@"",@"",401,NO);
         passed &= runCase(@"native_invalid_model",key,@"dsapi-nonexistent-model",NO,simple,@"",@"",400,NO);
+        NSDictionary *usage=DSAPIUsageSnapshot();
+        BOOL usagePassed=[usage[@"total_tokens"] longLongValue]>0 && [usage[@"reported_requests"] longLongValue]>=3;
+        passed &= usagePassed;
+        printf("%s: real API token accounting\n",usagePassed ? "PASS" : "FAIL");
         NSDictionary *report=@{@"scope":@"Actual production Objective-C client on macOS; not IPA UI or device signing acceptance",
-            @"base_url":@"https://api.deepseek.com/v1",@"passed":@(passed),@"cases":results};
+            @"base_url":@"https://api.deepseek.com/v1",@"passed":@(passed),@"cases":results,
+            @"token_accounting_passed":@(usagePassed),@"reported_requests":usage[@"reported_requests"] ?: @0,
+            @"prompt_tokens":usage[@"prompt_tokens"] ?: @0,@"completion_tokens":usage[@"completion_tokens"] ?: @0,@"total_tokens":usage[@"total_tokens"] ?: @0};
         [NSFileManager.defaultManager createDirectoryAtPath:@"diagnostics" withIntermediateDirectories:YES attributes:nil error:NULL];
         [[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:NULL]
             writeToFile:@"diagnostics/live-native-client.json" atomically:YES];
