@@ -18,6 +18,8 @@ root = pathlib.Path('sim-probe')
 diagnostics = pathlib.Path('diagnostics')
 diagnostics.mkdir(exist_ok=True)
 report = {'verification': 'experimental original-binary simulator baseline', 'steps': []}
+adapter_enabled = os.environ.get('PROBE_ADAPTER') == 'true'
+report['adapter_enabled'] = adapter_enabled
 
 
 def run(args, *, timeout=120, check=True):
@@ -27,6 +29,31 @@ def run(args, *, timeout=120, check=True):
     if check and result.returncode:
         raise RuntimeError(f'Command failed ({result.returncode}): {args[0]}')
     return result
+
+
+def build_simulator_adapter(app):
+    """Build test-only observation code into the disposable simulator module."""
+    from repack import add_library
+    sdk = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path']).stdout.strip()
+    objects = root/'objects'
+    objects.mkdir(exist_ok=True)
+    for source in [*pathlib.Path('Sources').glob('*.m'), pathlib.Path('Tests/RuntimeProbe.m')]:
+        run(['xcrun', 'clang', '-target', 'arm64-apple-ios18.0-simulator', '-isysroot', sdk,
+             '-ISources', '-fobjc-arc', '-fmodules', '-O2', '-c', str(source),
+             '-o', str(objects/(source.stem+'.o'))])
+    library = app/'Frameworks/DSAPIAdapter.dylib'
+    library.parent.mkdir(exist_ok=True)
+    run(['xcrun', 'swiftc', '-sdk', sdk, '-target', 'arm64-apple-ios18.0-simulator',
+         '-swift-version', '5', '-O', '-emit-library', 'Sources/DSRuntimeValidation.swift',
+         'Tests/RuntimeProbe.swift', *[str(p) for p in objects.glob('*.o')],
+         '-Xlinker', '-install_name', '-Xlinker', '@rpath/DSAPIAdapter.dylib',
+         '-framework', 'Foundation', '-framework', 'UIKit', '-framework', 'Security',
+         '-o', str(library)])
+    info = plistlib.loads((app/'Info.plist').read_bytes())
+    executable = app/info['CFBundleExecutable']
+    patched, count = add_library(executable.read_bytes(), '@executable_path/Frameworks/DSAPIAdapter.dylib')
+    executable.write_bytes(patched)
+    report['unchanged_original_TEXT_sections'] = count
 
 
 def probe():
@@ -75,6 +102,8 @@ def probe():
     main_info = plistlib.loads((app/'Info.plist').read_bytes())
     bundle = main_info['CFBundleIdentifier']
     report['bundle_id'] = bundle
+    if adapter_enabled:
+        build_simulator_adapter(app)
     entitlement_result = subprocess.run(['codesign', '-d', '--entitlements', ':-', str(app)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
@@ -129,7 +158,16 @@ def probe():
     pid = int(match.group(1)) if match else None
     for delay in (3, 8):
         time.sleep(delay)
-        run(['xcrun', 'simctl', 'io', device, 'screenshot', str(diagnostics/f'baseline-{delay}.png')], check=False)
+        mode = 'adapter' if adapter_enabled else 'baseline'
+        run(['xcrun', 'simctl', 'io', device, 'screenshot', str(diagnostics/f'{mode}-{delay}.png')], check=False)
+    if adapter_enabled:
+        container = run(['xcrun', 'simctl', 'get_app_container', device, bundle, 'data'], check=False)
+        runtime_report = pathlib.Path(container.stdout.strip())/'Documents/DSAPI-runtime-probe.json'
+        if container.returncode == 0 and runtime_report.is_file():
+            shutil.copy2(runtime_report, diagnostics/'runtime-probe.json')
+            report['native_decoder_report_collected'] = True
+        else:
+            report['native_decoder_report_collected'] = False
     alive = run(['ps', '-p', str(pid), '-o', 'pid=,stat=,comm='], check=False) if pid else None
     report['process_alive'] = bool(alive and alive.returncode == 0)
     logs = run(['xcrun', 'simctl', 'spawn', device, 'log', 'show', '--last', '2m', '--style', 'compact',

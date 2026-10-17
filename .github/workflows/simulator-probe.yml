@@ -1,6 +1,11 @@
 name: Investigate original IPA in ARM simulator
 on:
   workflow_dispatch:
+    inputs:
+      adapter:
+        description: Include the adapter and test-only native decoder observations
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -22,6 +27,8 @@ jobs:
           openssl enc -d -aes-256-cbc -pbkdf2 -in original.ipa.enc -out original.ipa -pass env:INPUT_PASSWORD
           echo '92a96bbbb7938f084a3840b4426bd891fe18dc46c1b6d4221186cb7df6cc18d9  original.ipa' | shasum -a 256 -c -
       - name: Probe original binary in a disposable simulator copy
+        env:
+          PROBE_ADAPTER: ${{ inputs.adapter }}
         run: python3 ci_probe_simulator.py original.ipa
       - name: Upload bounded diagnostics only
         if: always()
