@@ -63,10 +63,45 @@ def sign_simulator_app(app, entitlement_path):
     run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
 
 
+def select_simulator_toolchain():
+    # This input was linked with SDK 26 and strongly imports libswiftWebKit.
+    # Selecting the default Xcode 16 / iOS 18 runtime cannot load that import.
+    candidates = []
+    for app in pathlib.Path('/Applications').glob('Xcode*.app'):
+        if 'beta' in app.name.lower():
+            continue
+        try:
+            info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
+            version = tuple(int(x) for x in info['CFBundleShortVersionString'].split('.'))
+            candidates.append((version, app/'Contents/Developer'))
+        except (OSError, ValueError, KeyError):
+            continue
+    report['available_toolchains'] = []
+    for _, developer in sorted(candidates, reverse=True):
+        os.environ['DEVELOPER_DIR'] = str(developer)
+        result = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], check=False)
+        if result.returncode:
+            continue
+        sdk = result.stdout.strip()
+        report['available_toolchains'].append({'developer_dir': str(developer), 'sdk': sdk})
+        if tuple(map(int, sdk.split('.'))) < (26, 0):
+            continue
+        result = run(['xcrun', 'simctl', 'list', 'runtimes', '-j'], check=False)
+        if result.returncode:
+            continue
+        runtimes = json.loads(result.stdout)['runtimes']
+        if any(r.get('isAvailable') and 'iOS' in r['name'] and
+               r['version'].split('.')[:2] == sdk.split('.')[:2] for r in runtimes):
+            report['developer_dir'] = str(developer)
+            return
+    raise RuntimeError('No installed Xcode 26+ with a matching available iOS simulator runtime')
+
+
 def probe():
     report['architecture'] = run(['uname', '-m']).stdout.strip()
     if report['architecture'] != 'arm64':
         raise RuntimeError('ARM runner is required')
+    select_simulator_toolchain()
     report['xcode'] = run(['xcodebuild', '-version']).stdout
     sdk_version = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version']).stdout.strip()
     report['simulator_sdk'] = sdk_version
