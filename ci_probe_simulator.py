@@ -97,6 +97,23 @@ def select_simulator_toolchain():
     raise RuntimeError('No installed Xcode 26+ with a matching available iOS simulator runtime')
 
 
+def collect_ui_observations(device):
+    from ci_ui_probe import create_project
+    project = create_project(root/'UIProbe')
+    results = root/'UIResult.xcresult'
+    outcome = run(['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
+        '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
+        '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests/testNativeApp',
+        'test'], timeout=480, check=False)
+    (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
+    report['ui_test_exit_code'] = outcome.returncode
+    report['ui_test_scope'] = 'startup screenshots, known welcome agreement, accessible controls only'
+    if results.exists():
+        exported = run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(results),
+            '--output-path', str(diagnostics/'UIAttachments')], timeout=90, check=False)
+        report['ui_attachment_export_exit_code'] = exported.returncode
+
+
 def probe():
     report['architecture'] = run(['uname', '-m']).stdout.strip()
     if report['architecture'] != 'arm64':
@@ -238,6 +255,7 @@ def probe():
                 shutil.copy2(path, diagnostics/path.name)
     if not report['process_alive']:
         raise RuntimeError('Converted original app did not remain running')
+    collect_ui_observations(device)
     report['result'] = 'original binary remained running; screenshots require inspection'
 
 
