@@ -11,7 +11,8 @@ static void (*originalFooterLayout)(id,SEL);
 static void (*originalSelect)(id,SEL,UITableView *,NSIndexPath *);
 static void (*originalDisplay)(id,SEL,UITableView *,UITableViewCell *,NSIndexPath *);
 static CGFloat (*originalHeight)(id,SEL,UITableView *,NSIndexPath *);
-static char footerOverlayKey, cellOverlayKey, cellStateKey;
+static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey;
+extern void *DSAPICopySettingsBackingSource(const void *source);
 static IMP replaceMethod(Class cls,SEL selector,IMP replacement,const char *fallback) {
     if (!cls) return NULL;
     Method method=class_getInstanceMethod(cls,selector);
@@ -25,7 +26,23 @@ static BOOL isItem(NSString *item,NSString *name) {
 }
 static NSString *itemAt(UITableView *table,NSIndexPath *path) {
     id source=table.dataSource; SEL selector=NSSelectorFromString(@"itemIdentifierForIndexPath:");
-    return [source respondsToSelector:selector] ? [((id (*)(id,SEL,id))objc_msgSend)(source,selector,path) description] ?: @"" : @"";
+    id backing=objc_getAssociatedObject(source,&backingSourceKey);
+    if (!backing && [source respondsToSelector:selector]) backing=source;
+    if (!backing) {
+        void *result=DSAPICopySettingsBackingSource((__bridge void *)source);
+        if (result) backing=CFBridgingRelease((CFTypeRef)result);
+    }
+    if (!backing) for (NSString *key in @[@"_diffableDataSource",@"_dataSource",@"_impl",@"impl",@"dataSource"]) {
+        @try { id candidate=[source valueForKey:key]; if ([candidate respondsToSelector:selector]) { backing=candidate; break; } }
+        @catch (NSException *exception) { }
+    }
+    if (backing && backing!=source) objc_setAssociatedObject(source,&backingSourceKey,backing,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    #if DSAPI_RUNTIME_DIAGNOSTICS
+    [NSUserDefaults.standardUserDefaults setObject:@{@"source":NSStringFromClass([source class]) ?: @"none",
+        @"delegate":NSStringFromClass([table.delegate class]) ?: @"none",@"backing":backing ? NSStringFromClass([backing class]) : @"not found"}
+        forKey:@"DSAPIAdapter.nativeSettingsSource"];
+    #endif
+    return [backing respondsToSelector:selector] ? [((id (*)(id,SEL,id))objc_msgSend)(backing,selector,path) description] ?: @"" : @"";
 }
 static BOOL removedItem(NSString *item) {
     for (NSString *name in @[@"accountManagement",@"logout",@"aboutService",@"contactUs",@"helpAndFeedback"])

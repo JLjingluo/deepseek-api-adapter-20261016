@@ -67,3 +67,32 @@ public func nativeSpeechMessageID(_ raw: UnsafeRawPointer?) -> Int64 {
     }
     return 0
 }
+
+@_cdecl("DSAPICopySettingsBackingSource")
+public func copySettingsBackingSource(_ raw: UnsafeRawPointer?) -> UnsafeMutableRawPointer? {
+    guard let raw else { return nil }
+    let source = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    let selector = NSSelectorFromString("itemIdentifierForIndexPath:")
+    var visited = Set<ObjectIdentifier>()
+    func find(_ value: Any, depth: Int) -> NSObject? {
+        guard depth < 4 else { return nil }
+        let reflected = Mirror(reflecting: value)
+        if reflected.displayStyle == .optional {
+            return reflected.children.first.flatMap { find($0.value, depth: depth + 1) }
+        }
+        if let object = value as? NSObject {
+            guard visited.insert(ObjectIdentifier(object)).inserted else { return nil }
+            if object.responds(to: selector) { return object }
+        }
+        var mirror: Mirror? = reflected
+        while let current = mirror {
+            for child in current.children where !(child.label ?? "").lowercased().contains("tableview") {
+                if let match = find(child.value, depth: depth + 1) { return match }
+            }
+            mirror = current.superclassMirror
+        }
+        return nil
+    }
+    guard let backing = find(source, depth: 0) else { return nil }
+    return Unmanaged.passRetained(backing).toOpaque()
+}

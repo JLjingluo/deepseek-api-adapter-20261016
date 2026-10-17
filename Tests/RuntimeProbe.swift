@@ -92,6 +92,7 @@ public func runRuntimeProbe() {
         "mock_configuration_saved": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testConfigurationSaved"),
         "mock_keychain_bypassed": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testKeychainBypassed"),
         "native_settings_items": UserDefaults.standard.array(forKey: "DSAPIAdapter.nativeSettingsItems") ?? [],
+        "native_settings_source": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.nativeSettingsSource") ?? [:],
         "native_language": UserDefaults.standard.string(forKey: "DSAPIAdapter.nativeLanguage") ?? "not inferred",
         "speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechVoice") ?? "device default",
         "last_spoken_message_id": UserDefaults.standard.integer(forKey: "DSAPIAdapter.lastSpokenMessageID"),
