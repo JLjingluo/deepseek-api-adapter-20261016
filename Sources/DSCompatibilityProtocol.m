@@ -178,7 +178,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (void)sendMessageStatus:(NSString *)status {
     NSMutableDictionary *message = [[DSLocalStore.shared message:_assistantID session:_sessionID] mutableCopy];
-    message[@"fragments"] = [self fragments]; message[@"status"] = status;
+    message[@"fragments"] = [self fragments]; message[@"status"] = status; message[@"quasi_status"] = status;
     [self event:@"delta" body:@{@"p":@"response",@"o":@"SET",@"v":message}];
 }
 - (void)finishStream:(NSString *)status error:(NSError *)error {

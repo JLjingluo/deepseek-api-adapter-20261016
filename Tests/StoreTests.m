@@ -16,6 +16,7 @@ int main(void) {
         NSNumber *firstAssistant = turn.lastObject[@"message_id"];
         check([store updateMessage:firstAssistant session:sid values:@{@"status":@"FINISHED",@"fragments":@[
             @{@"type":@"THINK",@"content":@"private thought"},@{@"type":@"RESPONSE",@"content":@"world"}]} error:&error],@"persist response");
+        check([[store message:firstAssistant session:sid][@"quasi_status"] isEqual:@"FINISHED"],@"required native status remains a non-null terminal value");
         NSArray *next = [store beginTurn:sid parent:firstAssistant prompt:@"next" thinking:NO error:&error];
         NSArray *history = [store apiHistory:sid endingAt:next.firstObject[@"message_id"] error:&error];
         check(history.count == 3,@"selected history includes previous turn");

@@ -107,14 +107,14 @@ static NSError *DSStoreError(NSString *description) {
         NSNumber *uid = next[@"nextID"]; next[@"nextID"] = @(uid.longLongValue + 1);
         NSDictionary *user = @{@"message_id":uid,@"parent_id":previous ?: NSNull.null,@"role":@"USER",
             @"fragments":@[@{@"id":uid,@"type":@"REQUEST",@"content":prompt}],@"status":@"FINISHED",
-            @"quasi_status":NSNull.null,@"accumulated_token_usage":@0,@"feedback":NSNull.null,
+            @"quasi_status":@"FINISHED",@"accumulated_token_usage":@0,@"feedback":NSNull.null,
             @"thinking_enabled":@(thinking),@"ban_edit":@NO,@"ban_regenerate":@NO,@"tips":@[],
             @"conversation_mode":@"CHAT",@"search_enabled":@NO,@"search_triggered":@NO,@"extra_search_providers":@[]};
         [messages addObject:[user mutableCopy]]; [created addObject:user]; previous = uid;
     }
     NSNumber *aid = next[@"nextID"]; next[@"nextID"] = @(aid.longLongValue + 1);
     NSMutableDictionary *assistant = [@{@"message_id":aid,@"parent_id":previous ?: NSNull.null,@"role":@"ASSISTANT",
-        @"fragments":@[],@"status":@"WIP",@"quasi_status":NSNull.null,@"accumulated_token_usage":@0,
+        @"fragments":@[],@"status":@"WIP",@"quasi_status":@"WIP",@"accumulated_token_usage":@0,
         @"feedback":NSNull.null,@"thinking_enabled":@(thinking),@"ban_edit":@NO,@"ban_regenerate":@NO,@"tips":@[],
         @"conversation_mode":@"CHAT",@"search_enabled":@NO,@"search_triggered":@NO,@"extra_search_providers":@[]} mutableCopy];
     [messages addObject:assistant]; [created addObject:assistant];
@@ -150,6 +150,7 @@ static NSError *DSStoreError(NSString *description) {
         if (![message[@"message_id"] isEqual:identifier]) continue;
         for (NSString *key in @[@"fragments",@"status",@"feedback",@"accumulated_token_usage"])
             if (values[key]) message[key] = values[key];
+        if (values[@"status"]) message[@"quasi_status"] = values[@"status"];
         return [self commit:next error:error];
     }
     if (error) *error = DSStoreError(@"消息不存在。"); return NO;
