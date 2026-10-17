@@ -30,6 +30,10 @@ jobs:
             Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ProtocolTests.m \
             -framework Foundation -framework Security -o build/ProtocolTests
           build/ProtocolTests
+          xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
+            Sources/DSOpenAIClient.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ClientTests.m \
+            -framework Foundation -framework Security -o build/ClientTests
+          build/ClientTests
       - name: Compile iOS arm64 library
         run: |
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"

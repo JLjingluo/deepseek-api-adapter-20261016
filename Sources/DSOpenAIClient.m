@@ -34,13 +34,19 @@
     NSURL *url = [_configuration completionURL:&error];
     if (!url) { [self complete:nil error:error]; return; }
     NSString *model = reasoning && _configuration.reasoningModel.length ? _configuration.reasoningModel : _configuration.model;
+    BOOL officialDeepSeek = [url.host.lowercaseString isEqualToString:@"api.deepseek.com"];
+    if (officialDeepSeek && reasoning && !_configuration.reasoningModel.length && [model isEqualToString:@"deepseek-chat"])
+        model = @"deepseek-reasoner";
     if (!model.length || !messages.count) {
         [self complete:nil error:[NSError errorWithDomain:@"DSAPI.Client" code:2
             userInfo:@{NSLocalizedDescriptionKey:@"A model and message history are required"}]]; return;
     }
     NSMutableArray *history = [messages mutableCopy];
     if (_configuration.systemPrompt.length) [history insertObject:@{@"role":@"system", @"content":_configuration.systemPrompt} atIndex:0];
-    NSData *body = [NSJSONSerialization dataWithJSONObject:@{@"model":model, @"messages":history, @"stream":@YES}
+    NSMutableDictionary *payload = [@{@"model":model, @"messages":history, @"stream":@YES} mutableCopy];
+    if (officialDeepSeek && ([model isEqualToString:@"deepseek-flash"] || [model hasPrefix:@"deepseek-v4"]))
+        payload[@"thinking"] = @{@"type":reasoning ? @"enabled" : @"disabled"};
+    NSData *body = [NSJSONSerialization dataWithJSONObject:payload
         options:0 error:&error];
     if (!body) { [self complete:nil error:error]; return; }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
