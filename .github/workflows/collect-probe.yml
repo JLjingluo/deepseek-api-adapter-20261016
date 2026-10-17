@@ -1,0 +1,54 @@
+name: Collect completed simulator investigation
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed probe run ID
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-simulator-probe
+          path: diagnostics
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Collect job log and publish observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PROBE_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          gh run view "$PROBE_RUN_ID" --log > diagnostics/probe-job.log
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request, zipfile
+          run = os.environ['PROBE_RUN_ID']
+          if not run.isdecimal(): raise SystemExit('Invalid run ID')
+          report = pathlib.Path('diagnostics/report.json')
+          payload = report.read_text() if report.exists() else '{"error":"report missing"}'
+          # A dedicated evidence branch makes the small report readable even if
+          # the runner's release client fails. No input app is included.
+          base = 'https://api.github.com/repos/'+os.environ['GH_REPO']
+          headers = {'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json'}
+          def api(path, body=None):
+              req=urllib.request.Request(base+path, data=json.dumps(body).encode() if body is not None else None, headers=headers)
+              with urllib.request.urlopen(req) as response: return json.load(response)
+          head=api('/git/ref/heads/main')['object']['sha']
+          blob=api('/git/blobs',{'content':payload,'encoding':'utf-8'})['sha']
+          tree=api('/git/trees',{'tree':[{'path':'report.json','mode':'100644','type':'blob','sha':blob}]})['sha']
+          commit=api('/git/commits',{'message':'Record simulator probe '+run,'tree':tree,'parents':[head]})['sha']
+          api('/git/refs',{'ref':'refs/heads/probe-evidence-'+run,'sha':commit})
+          with zipfile.ZipFile('probe-diagnostics.zip','w',compression=zipfile.ZIP_DEFLATED) as archive:
+              for path in pathlib.Path('diagnostics').rglob('*'):
+                  if path.is_file(): archive.write(path,path.as_posix())
+          subprocess.run(['gh','release','create','probe-evidence-'+run,'--target',head,'--prerelease',
+              '--title','Simulator investigation '+run,'--notes','Diagnostics only; no original IPA.',
+              'probe-diagnostics.zip'],check=True)
+          PY

@@ -27,8 +27,13 @@ public func runRuntimeProbe() {
         var result: [String: Any] = ["type": name]
         if let type = _typeByName("DeepSeek_Chat." + name) as? any Decodable.Type {
             do {
-                _ = try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
+                let decoded = try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
                 result["decoded"] = true
+                if let encodable = decoded as? any Encodable,
+                   let encoded = try? JSONEncoder().encode(encodable),
+                   let canonical = try? JSONSerialization.jsonObject(with: encoded) {
+                    result["canonical"] = canonical
+                }
             } catch { result["decoded"] = false; result["error"] = String(describing: error) }
         } else { result["resolved"] = false }
         results.append(result)

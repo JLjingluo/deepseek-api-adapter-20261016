@@ -4,6 +4,7 @@ Usage: python repack.py ORIGINAL.ipa DSAPIAdapter.dylib OUTPUT.ipa
 This verifies package integrity and unchanged resources, not runtime behavior.
 """
 import hashlib
+import copy
 import json
 import plistlib
 import struct
@@ -97,7 +98,9 @@ def main():
                 # Signing is deliberately left to the user's signing tool.
                 if '/_CodeSignature/' in item.filename or item.filename.endswith('/embedded.mobileprovision'):
                     continue
-                output.writestr(item,patched if item.filename == executable else original.read(item))
+                # ZipFile.writestr mutates ZipInfo.header_offset. Preserve the input
+                # archive's offsets for the independent resource comparison below.
+                output.writestr(copy.copy(item),patched if item.filename == executable else original.read(item))
             item = zipfile.ZipInfo(target)
             item.compress_type = zipfile.ZIP_DEFLATED
             item.external_attr = 0o100755 << 16
@@ -109,7 +112,7 @@ def main():
             for item in output.infolist():
                 if item.filename in (executable,target):
                     continue
-                if digest(output.read(item)) != digest(original.read(item)):
+                if digest(output.read(item)) != digest(original.read(item.filename)):
                     raise ValueError('Original resource changed: '+item.filename)
                 preserved += 1
     report = {'status':'experimental-unsigned-integration-candidate',
