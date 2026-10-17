@@ -11,6 +11,7 @@
     NSMutableString *_text;
     NSMutableString *_thought;
     NSTimeInterval _lastSave;
+    dispatch_source_t _heartbeat;
 }
 static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStreams(void) {
     static NSMutableDictionary *streams; static dispatch_once_t once;
@@ -27,6 +28,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 - (void)stopLoading {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self->_stopped) return;
+        [self closeHeartbeat];
         [self saveStreamStatus:@"INCOMPLETE"];
         self->_stopped = YES;
         [self->_upstream cancel]; self->_upstream = nil;
@@ -48,9 +50,27 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (void)fail:(NSString *)description {
     if (_stopped) return;
+    [self closeHeartbeat];
+    [_upstream cancel]; _upstream = nil;
+    if (_assistantID) [DSActiveStreams() removeObjectForKey:_assistantID.stringValue];
     _stopped = YES;
     [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:@"DSAPI.Compatibility" code:1
         userInfo:@{NSLocalizedDescriptionKey:description}]];
+}
+- (void)closeHeartbeat {
+    if (_heartbeat) { dispatch_source_cancel(_heartbeat); _heartbeat = nil; }
+}
+- (void)startHeartbeat {
+    _heartbeat = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,dispatch_get_main_queue());
+    dispatch_source_set_timer(_heartbeat,dispatch_time(DISPATCH_TIME_NOW,8*NSEC_PER_SEC),8*NSEC_PER_SEC,NSEC_PER_SEC);
+    __weak typeof(self) weakSelf = self;
+    dispatch_source_set_event_handler(_heartbeat, ^{
+        typeof(self) strong = weakSelf;
+        if (!strong || strong->_stopped) return;
+        NSData *keepAlive = [@": local-api-keep-alive\n\n" dataUsingEncoding:NSUTF8StringEncoding];
+        [strong.client URLProtocol:strong didLoadData:keepAlive];
+    });
+    dispatch_resume(_heartbeat);
 }
 - (void)event:(NSString *)name body:(id)body {
     if (_stopped) return;
@@ -183,11 +203,13 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (void)finishStream:(NSString *)status error:(NSError *)error {
     if (_stopped) return;
+    [self closeHeartbeat];
     [self saveStreamStatus:status];
     if (error) {
         [self event:@"toast" body:@{@"type":@"error",@"content":error.localizedDescription,@"finish_reason":@"error"}];
     }
     [self sendMessageStatus:status]; [self event:@"finish" body:@{}];
+    if (_stopped) return;
     _stopped = YES;
     DSOpenAIClient *upstream = _upstream; _upstream = nil; [upstream cancel];
     [DSActiveStreams() removeObjectForKey:_assistantID.stringValue];
@@ -233,6 +255,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     _text = [NSMutableString string]; _thought = [NSMutableString string];
     DSActiveStreams()[_assistantID.stringValue] = self;
     [self responseType:@"text/event-stream; charset=utf-8"];
+    [self startHeartbeat];
     [self event:@"ready" body:@{@"request_content":prompt ?: @"",@"model_type":p[@"model_type"] ?: @"default",
         @"request_message_id":requestID ?: @0,@"response_message_id":_assistantID,@"ban_edit":@NO}];
     [self sendMessageStatus:@"WIP"];
