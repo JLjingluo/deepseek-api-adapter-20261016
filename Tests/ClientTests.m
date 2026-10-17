@@ -36,9 +36,9 @@ static NSString *scenario;
     NSString *mime=[mode isEqual:@"mime"] ? @"application/json" : @"text/event-stream";
     NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:status HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":mime}];
     [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-    NSString *wire=@"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"思考🧠\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"你好🌏\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+    NSString *wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"思考🧠\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好🌏\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
     if ([mode isEqual:@"malformed"]) wire=@"data: {invalid}\n\n";
-    if ([mode isEqual:@"truncated"]) wire=@"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n";
+    if ([mode isEqual:@"truncated"]) wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n";
     NSData *bytes=[wire dataUsingEncoding:NSUTF8StringEncoding];
     for (NSUInteger offset=0;offset<bytes.length;offset+=3) {
         [self.client URLProtocol:self didLoadData:[bytes subdataWithRange:NSMakeRange(offset,MIN(3,bytes.length-offset))]];
