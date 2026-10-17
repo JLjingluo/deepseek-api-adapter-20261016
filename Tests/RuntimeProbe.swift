@@ -44,6 +44,9 @@ public func runRuntimeProbe() {
                 let decoded = try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
                 result["decoded"] = true
                 result["reflection"] = String(reflecting: decoded)
+                if name == "ServerModels.Response.Challenge" || name == "ServerModels.Response.ChatHistoryMessages" {
+                    result["known_enum_values"] = !String(reflecting: decoded).contains(".unknown")
+                }
                 if let encodable = decoded as? any Encodable,
                    let encoded = try? JSONEncoder().encode(encodable),
                    let canonical = try? JSONSerialization.jsonObject(with: encoded) {

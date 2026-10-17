@@ -352,6 +352,8 @@ def probe():
         '--predicate', 'process == \"DeepSeek Chat\"'], timeout=60, check=False)
     (diagnostics/'application-after-ui.log').write_text(after_logs.stdout)
     report['result'] = 'original binary remained running; screenshots require inspection'
+    if report.get('ui_test_exit_code') != 0:
+        raise RuntimeError('Native UI acceptance assertions failed; see ui-test.log')
 
 
 if __name__ == '__main__':
