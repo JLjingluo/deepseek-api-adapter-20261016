@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "DSOpenAIClient.h"
+#import "DSUsageStore.h"
 #import <objc/runtime.h>
 
 static void check(BOOL value, NSString *name) {
@@ -53,6 +54,7 @@ static NSString *scenario;
     NSString *wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"思考🧠\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好🌏\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
     if ([mode isEqual:@"malformed"]) wire=@"data: {invalid}\n\n";
     if ([mode isEqual:@"truncated"]) wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n";
+    if ([mode isEqual:@"success"]) wire=[wire stringByReplacingOccurrencesOfString:@"data: [DONE]" withString:@"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}\n\ndata: [DONE]"];
     NSData *bytes=[wire dataUsingEncoding:NSUTF8StringEncoding];
     for (NSUInteger offset=0;offset<bytes.length;offset+=3) {
         [self.client URLProtocol:self didLoadData:[bytes subdataWithRange:NSMakeRange(offset,MIN(3,bytes.length-offset))]];
@@ -62,6 +64,7 @@ static NSString *scenario;
 @end
 
 static void runCase(NSString *name, BOOL success) {
+    NSDictionary *usageBefore=DSAPIUsageSnapshot();
     scenario=name;
     DSAPIConfiguration *config=[DSAPIConfiguration new];
     config.baseURL=@"https://api.fixture.test/v1"; config.model=@"base-model";
@@ -82,6 +85,10 @@ static void runCase(NSString *name, BOOL success) {
         failure.domain.UTF8String,(long)failure.code,failure.localizedDescription.UTF8String,lastBody ? "yes" : "no");
     check(success ? !failure : failure!=nil,[name stringByAppendingString:@" expected outcome"]);
     if (success) {
+        NSDictionary *snapshot=DSAPIUsageSnapshot();
+        check([snapshot[@"total_tokens"] longLongValue]-[usageBefore[@"total_tokens"] longLongValue]==8,@"usage-only terminal chunk records actual token counts");
+        NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:0 error:NULL];
+        check(![[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] containsString:@"test-dummy-key"],@"usage history never contains the API key");
         check([text isEqual:@"你好🌏"] && [thought isEqual:@"思考🧠"],@"native client preserves byte-fragmented text and reasoning");
         check([lastBody[@"model"] isEqual:@"reason-model"] && [lastBody[@"stream"] boolValue],@"reasoning model selection and SSE request");
         check([lastBody[@"messages"][0][@"role"] isEqual:@"system"] && [lastBody[@"messages"] count]==2,@"system instruction precedes caller history");
@@ -91,6 +98,7 @@ static void runCase(NSString *name, BOOL success) {
     [client cancel];
     [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
     check(terminals==1,@"cancelling a completed request does not duplicate terminal callback");
+    check([DSAPIUsageSnapshot()[@"requests"] longLongValue]-[usageBefore[@"requests"] longLongValue]==1,@"stream chunks and repeated cancellation do not duplicate usage records");
 }
 int main(void) {
     @autoreleasepool {

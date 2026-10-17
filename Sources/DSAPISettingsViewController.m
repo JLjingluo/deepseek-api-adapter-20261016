@@ -1,5 +1,6 @@
 #import "DSAPISettingsViewController.h"
 #import "DSAPIConfiguration.h"
+#import "DSAPILocalization.h"
 @interface DSAPISettingsViewController ()
 @property(nonatomic, strong) DSAPIConfiguration *configuration;
 @property(nonatomic, strong) NSArray<UITextField *> *fields;
@@ -10,7 +11,7 @@
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"API 设置";
+    self.title = DSAPILocalized(@"api");
     self.configuration = [DSAPIConfiguration loadConfiguration];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
         target:self action:@selector(cancel)];
@@ -20,8 +21,8 @@
     NSArray *values = @[self.configuration.baseURL, self.configuration.apiKey,
         self.configuration.model, self.configuration.reasoningModel, self.configuration.systemPrompt,
         [NSString stringWithFormat:@"%.0f",self.configuration.timeout]];
-    NSArray *placeholders = @[@"https://example.com/v1", @"API Key", @"模型名",
-        @"留空则使用同一模型", @"可选", @"180"];
+    NSArray *placeholders = @[@"https://example.com/v1", @"API Key", DSAPILocalized(@"model"),
+        DSAPILocalized(@"thinkingModel"), DSAPILocalized(@"systemPrompt"), @"180"];
     for (NSUInteger i = 0; i < values.count; i++) {
         UITextField *field = [UITextField new];
         field.text = values[i]; field.placeholder = placeholders[i];
@@ -43,12 +44,10 @@
     return section == 0 ? 2 : (section == 1 ? 2 : 2);
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return @[@"连接", @"模型", @"高级"][section];
+    return @[DSAPILocalized(@"connection"), DSAPILocalized(@"models"), DSAPILocalized(@"advanced")][section];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) return @"填写服务提供方的 HTTPS Base URL（例如以 /v1 结尾），或完整 /chat/completions 地址。API Key 仅保存到此设备的钥匙串。";
-    if (section == 1) return @"思考模型为可选项；是否返回思考内容取决于所选服务。";
-    return @"超时范围 10–3600 秒。系统提示词会在发送时加入消息历史。";
+    return DSAPILocalized(@[@"connectionNote",@"modelNote",@"advancedNote"][section]);
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     NSUInteger index = indexPath.section * 2 + indexPath.row;
@@ -76,7 +75,7 @@
     self.configuration.timeout = self.fields[5].text.doubleValue;
     NSError *error = nil;
     if (![self.configuration save:&error]) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法保存"
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
             message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;

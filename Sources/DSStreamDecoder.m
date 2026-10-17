@@ -40,6 +40,7 @@ static const NSUInteger DSStreamLimit = 4 * 1024 * 1024;
         [self fail:@"Expected a JSON object in SSE event"]; return;
     }
     NSDictionary *chunk = object;
+    if ([chunk[@"usage"] isKindOfClass:NSDictionary.class] && self.onUsage) self.onUsage(chunk[@"usage"]);
     if (chunk[@"error"] && chunk[@"error"] != NSNull.null) {
         [self fail:@"The API returned an error event"]; return;
     }

@@ -1,5 +1,6 @@
 #import "DSOpenAIClient.h"
 #import "DSStreamDecoder.h"
+#import "DSUsageStore.h"
 @implementation DSOpenAIClient {
     DSAPIConfiguration *_configuration;
     NSURLSession *_session;
@@ -7,6 +8,9 @@
     DSStreamDecoder *_decoder;
     void (^_completion)(NSString *, NSError *);
     BOOL _finished, _started;
+    NSDate *_startDate;
+    NSString *_requestModel;
+    NSDictionary *_reportedUsage;
 }
 - (instancetype)initWithConfiguration:(DSAPIConfiguration *)configuration {
     if ((self = [super init])) _configuration = configuration;
@@ -15,8 +19,17 @@
 - (void)complete:(NSString *)reason error:(NSError *)error {
     if (_finished) return;
     _finished = YES;
+    if (_started) {
+        NSString *outcome=error ? ([error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled ? @"cancelled" : @"failed") : @"succeeded";
+        NSMutableDictionary *record=[@{@"model":_requestModel ?: _configuration.model ?: @"",
+            @"host":[NSURL URLWithString:_configuration.baseURL].host ?: @"",@"outcome":outcome,
+            @"timestamp":@(NSDate.date.timeIntervalSince1970),@"duration":@(_startDate ? -_startDate.timeIntervalSinceNow : 0)} mutableCopy];
+        if (_reportedUsage) record[@"usage"]=_reportedUsage;
+        if (error) record[@"error_code"]=@(error.code);
+        DSRecordAPIUsage(record);
+    }
     void (^callback)(NSString *, NSError *) = _completion; _completion = nil;
-    _decoder.onDelta = nil; _decoder.onFinish = nil; _decoder.onError = nil;
+    _decoder.onDelta = nil; _decoder.onFinish = nil; _decoder.onError = nil; _decoder.onUsage = nil;
     [_task cancel]; [_session invalidateAndCancel];
     _task = nil; _session = nil;
     if (callback) callback(reason, error);
@@ -29,7 +42,7 @@
         completion(nil, [NSError errorWithDomain:@"DSAPI.Client" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Client already started"}]);
         return;
     }
-    _started = YES; _completion = [completion copy];
+    _started = YES; _startDate=NSDate.date; _completion = [completion copy];
     NSError *error = nil;
     NSURL *url = [_configuration completionURL:&error];
     if (!url) { [self complete:nil error:error]; return; }
@@ -37,6 +50,7 @@
     BOOL officialDeepSeek = [url.host.lowercaseString isEqualToString:@"api.deepseek.com"];
     if (officialDeepSeek && reasoning && !_configuration.reasoningModel.length && [model isEqualToString:@"deepseek-chat"])
         model = @"deepseek-reasoner";
+    _requestModel=model;
     if (!model.length || !messages.count) {
         [self complete:nil error:[NSError errorWithDomain:@"DSAPI.Client" code:2
             userInfo:@{NSLocalizedDescriptionKey:@"A model and message history are required"}]]; return;
@@ -44,6 +58,7 @@
     NSMutableArray *history = [messages mutableCopy];
     if (_configuration.systemPrompt.length) [history insertObject:@{@"role":@"system", @"content":_configuration.systemPrompt} atIndex:0];
     NSMutableDictionary *payload = [@{@"model":model, @"messages":history, @"stream":@YES} mutableCopy];
+    if (officialDeepSeek) payload[@"stream_options"]=@{@"include_usage":@YES};
     if (officialDeepSeek && ([model isEqualToString:@"deepseek-flash"] || [model hasPrefix:@"deepseek-v4"]))
         payload[@"thinking"] = @{@"type":reasoning ? @"enabled" : @"disabled"};
     NSData *body = [NSJSONSerialization dataWithJSONObject:payload
@@ -62,6 +77,14 @@
     _session = [NSURLSession sessionWithConfiguration:sessionConfig delegate:self delegateQueue:NSOperationQueue.mainQueue];
     _decoder = [DSStreamDecoder new];
     __weak typeof(self) weakSelf = self;
+    _decoder.onUsage = ^(NSDictionary *usage) {
+        // Only numeric token counts are persisted. No prompts, keys or API bodies.
+        NSMutableDictionary *counts=[NSMutableDictionary dictionary];
+        for (NSString *key in @[@"prompt_tokens",@"completion_tokens",@"total_tokens"])
+            if ([usage[key] isKindOfClass:NSNumber.class] && [usage[key] longLongValue]>=0) counts[key]=usage[key];
+        typeof(self) strong=weakSelf;
+        if (strong) strong->_reportedUsage=[counts copy];
+    };
     _decoder.onDelta = delta;
     _decoder.onFinish = ^(NSString *reason) { [weakSelf complete:reason error:nil]; };
     _decoder.onError = ^(NSError *streamError) { [weakSelf complete:nil error:streamError]; };

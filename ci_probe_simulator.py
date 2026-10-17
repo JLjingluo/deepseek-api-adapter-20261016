@@ -169,8 +169,10 @@ def collect_ui_observations(device):
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
         '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests/testNativeApp',
         'test']
-    if report.get('mock_api_base_url'):
-        arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_MOCK_UI')
+    conditions=[]
+    if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
+    if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
+    if conditions: arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS='+' '.join(conditions))
     outcome = run(arguments, timeout=480, check=False)
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
@@ -251,10 +253,7 @@ def probe():
     # Simulator-only ad-hoc signing; no developer certificate or account involved.
     # Device App Group entitlements are restricted on the macOS host and cannot
     # be granted by this ad-hoc test signature. Do not copy them into it.
-    entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True,
-        'application-identifier': 'DSAPITEST.com.deepseek.chat',
-        'com.apple.developer.team-identifier': 'DSAPITEST',
-        'keychain-access-groups': ['DSAPITEST.com.deepseek.chat']}
+    entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))

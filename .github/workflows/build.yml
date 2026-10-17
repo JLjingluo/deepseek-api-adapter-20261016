@@ -26,12 +26,12 @@ jobs:
             Sources/DSLocalStore.m Tests/StoreTests.m -framework Foundation -o build/StoreTests
           build/StoreTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSOpenAIClient.m \
+            Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSOpenAIClient.m Sources/DSUsageStore.m \
             Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ProtocolTests.m \
             -framework Foundation -framework Security -o build/ProtocolTests
           build/ProtocolTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSOpenAIClient.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ClientTests.m \
+            Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/ClientTests.m \
             -framework Foundation -framework Security -o build/ClientTests
           build/ClientTests
       - name: Compile iOS arm64 library

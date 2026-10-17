@@ -14,7 +14,7 @@ jobs:
       - name: Compile the actual client without simulator hooks
         run: |
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSOpenAIClient.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/LiveClientTests.m \
+            Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/LiveClientTests.m \
             -framework Foundation -framework Security -o LiveClientTests
       - name: Test official API with a temporary runtime secret
         env:

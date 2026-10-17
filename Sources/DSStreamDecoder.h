@@ -4,6 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface DSStreamDecoder : NSObject
 @property(nonatomic, copy, nullable) void (^onDelta)(NSString *text, NSString *reasoning);
 @property(nonatomic, copy, nullable) void (^onFinish)(NSString *reason);
+@property(nonatomic, copy, nullable) void (^onUsage)(NSDictionary *usage);
 @property(nonatomic, copy, nullable) void (^onError)(NSError *error);
 @property(nonatomic, readonly) BOOL terminal;
 - (void)consume:(NSData *)data;
