@@ -7,6 +7,12 @@ The modules now include runtime routing for the user-supplied 2.6.2 binary.
 Compilation and component tests do not establish that the original app starts
 or that its UI and all features behave correctly on an iPhone.
 
+An [experimental unsigned IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/tag/experimental-ipa-2.6.2)
+is now available for self-signing. It is **not a completed or verified 100% equivalent app**.
+Its accompanying manifest records CRC validation, 734 unchanged original archive
+entries and 29 unchanged original TEXT sections. These checks do not establish
+startup or functional correctness. The known feature gaps below still apply.
+
 Current modules:
 
 - HTTPS Base URL, API key, primary/reasoning model, system prompt and timeout configuration.
