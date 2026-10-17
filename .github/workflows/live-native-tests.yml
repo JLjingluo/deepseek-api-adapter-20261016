@@ -1,0 +1,33 @@
+name: Test production native client against official API
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  live:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile the actual client without simulator hooks
+        run: |
+          xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
+            Sources/DSOpenAIClient.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Tests/LiveClientTests.m \
+            -framework Foundation -framework Security -o LiveClientTests
+      - name: Test official API with a temporary runtime secret
+        env:
+          TEST_API_KEY: ${{ secrets.DSAPI_TEMPORARY_TEST_KEY }}
+        run: ./LiveClientTests
+      - name: Publish sanitized test counts only
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test -f diagnostics/live-native-client.json
+          gh release create "live-client-results-${GITHUB_RUN_NUMBER}" --prerelease \
+            --title "Native client live API results ${GITHUB_RUN_NUMBER}" \
+            --notes "Production Objective-C client tested on macOS. Not an IPA UI or device-signing acceptance result. No API key or response body included." \
+            diagnostics/live-native-client.json
