@@ -142,9 +142,13 @@ final class CaptureTests: XCTestCase {
             capture(app, "preference-" + names[0])
             print("DSAPI_PREFERENCE_\(names[0])_BEGIN\n" + String(app.debugDescription.suffix(18000)) + "\nDSAPI_PREFERENCE_END")
             if names[0] == "Font size" {
+                let follow = app.switches.firstMatch
+                if follow.exists && (follow.value as? String) == "1" { follow.tap() }
                 let slider = app.sliders.firstMatch
                 XCTAssertTrue(slider.exists, "Native font size slider is missing")
+                let previous = slider.value as? String
                 slider.adjust(toNormalizedSliderPosition: 0.7)
+                print("DSAPI_FONT_CHANGE=\(previous ?? "unknown")->\(slider.value as? String ?? "unknown")")
                 capture(app, "font-size-adjusted")
             }
             if names[0] == "Personalization" {

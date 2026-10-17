@@ -33,6 +33,7 @@
         NSDictionary *record=self.snapshot[@"recent"][path.row];
         cell.textLabel.text=[NSString stringWithFormat:@"%@ · %@",record[@"model"] ?: @"",DSAPILocalized(record[@"outcome"] ?: @"failed")];
         NSDateFormatter *formatter=[NSDateFormatter new]; formatter.dateStyle=NSDateFormatterShortStyle; formatter.timeStyle=NSDateFormatterShortStyle;
+        formatter.locale=[NSLocale localeWithLocaleIdentifier:DSOriginalLocalized(@"locale")];
         cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@ · %.1fs",[formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:[record[@"timestamp"] doubleValue]]],record[@"host"] ?: @"",[record[@"duration"] doubleValue]];
         cell.detailTextLabel.numberOfLines=0;
     }

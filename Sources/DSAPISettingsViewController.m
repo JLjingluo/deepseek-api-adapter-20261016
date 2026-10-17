@@ -15,7 +15,8 @@
     self.configuration = [DSAPIConfiguration loadConfiguration];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
         target:self action:@selector(cancel)];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
+    self.navigationItem.leftBarButtonItem.accessibilityLabel=DSOriginalLocalized(@"cancel");
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:DSOriginalLocalized(@"imagePreviewSavePhoto") style:UIBarButtonItemStyleDone
         target:self action:@selector(save)];
     NSMutableArray *fields = [NSMutableArray array];
     NSArray *values = @[self.configuration.baseURL, self.configuration.apiKey,

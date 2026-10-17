@@ -21,7 +21,7 @@ NSDictionary *DSLocalVoiceConfiguration(void) {
         NSString *escaped=[voice.identifier stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
         NSString *url=[@"https://chat.deepseek.com/api/v0/chat/tts/local_demo/" stringByAppendingString:escaped];
         NSMutableDictionary *names=[NSMutableDictionary dictionary], *descriptions=[NSMutableDictionary dictionary], *demos=[NSMutableDictionary dictionary];
-        NSString *description=[NSLocale.currentLocale localizedStringForLocaleIdentifier:voice.language] ?: voice.language;
+        NSString *description=[[NSLocale localeWithLocaleIdentifier:DSOriginalLocalized(@"locale")] localizedStringForLocaleIdentifier:voice.language] ?: voice.language;
         for (NSString *locale in [NSBundle.mainBundle.localizations arrayByAddingObjectsFromArray:@[@"en",@"en-US",@"zh",@"zh-CN",@"zh-TW",@"zh-Hans",@"zh-Hant"]]) {
             names[locale]=voice.name; descriptions[locale]=description; demos[locale]=url;
         }

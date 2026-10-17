@@ -133,7 +133,11 @@ static void footerLayout(id self,SEL selector) {
             [label.trailingAnchor constraintLessThanOrEqualToAnchor:arrow.leadingAnchor constant:-12]]];
         objc_setAssociatedObject(footer,&footerOverlayKey,overlay,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    for (UIView *view in footer.subviews) if (view!=overlay) view.hidden=YES;
+    for (UIView *view in footer.subviews) if (view!=overlay) {
+        view.hidden=YES; view.isAccessibilityElement=NO; view.accessibilityElementsHidden=YES;
+        view.accessibilityIdentifier=nil;
+    }
+    footer.isAccessibilityElement=YES; footer.accessibilityElements=@[];
     UILabel *label=[overlay viewWithTag:7401]; NSString *text=DSAPILocalized(@"settings");
     if (![label.text isEqual:text]) label.text=text;
     footer.accessibilityLabel=text; footer.accessibilityIdentifier=@"DSAPI.SettingsEntry";
