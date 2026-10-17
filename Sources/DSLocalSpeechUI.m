@@ -1,0 +1,94 @@
+#import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <objc/runtime.h>
+#import "DSVoiceCatalog.h"
+#import "DSLocalStore.h"
+#import "DSAPILocalization.h"
+extern long long DSAPINativeSpeechMessageID(const void *view);
+static void (*originalSpeechLayout)(id,SEL);
+static char speechGestureKey, originalSpeechIconKey;
+static NSHashTable *speechViews;
+@interface DSNativeSpeaker : NSObject <AVSpeechSynthesizerDelegate>
+@property(nonatomic,strong) AVSpeechSynthesizer *synth;
+@property(nonatomic) long long messageID;
+@property(nonatomic,strong) AVSpeechUtterance *activeUtterance;
++ (instancetype)shared;
+- (void)tap:(UITapGestureRecognizer *)gesture;
+@end
+static UIImageView *speechIcon(UIView *view) {
+    for (UIView *child in view.subviews) {
+        if ([child isKindOfClass:UIImageView.class]) return (id)child;
+        UIImageView *image=speechIcon(child); if (image) return image;
+    }
+    return nil;
+}
+static void refreshSpeechIcons(void) {
+    DSNativeSpeaker *speaker=DSNativeSpeaker.shared;
+    for (UIView *view in speechViews) {
+        UIView *parent=view;
+        while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
+        BOOL active=parent && speaker.synth.speaking && DSAPINativeSpeechMessageID((__bridge void *)parent)==speaker.messageID;
+        UIImageView *icon=speechIcon(view);
+        UIImage *original=objc_getAssociatedObject(view,&originalSpeechIconKey);
+        if (!original && icon.image) { original=icon.image; objc_setAssociatedObject(view,&originalSpeechIconKey,original,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+        UIImage *target=active ? ([UIImage imageNamed:@"chat/message/tts_stop"] ?: original) : original;
+        if (icon.image!=target) icon.image=target;
+        view.accessibilityLabel=DSOriginalLocalized(active ? @"readAloudStopLabel" : @"readAloudStartLabel");
+    }
+}
+@implementation DSNativeSpeaker
++ (instancetype)shared {
+    static DSNativeSpeaker *speaker; static dispatch_once_t once;
+    dispatch_once(&once,^{ speaker=[DSNativeSpeaker new]; speaker.synth=[AVSpeechSynthesizer new];
+        speaker.synth.usesApplicationAudioSession=NO; speaker.synth.delegate=speaker; }); return speaker;
+}
+- (void)tap:(UITapGestureRecognizer *)gesture {
+    UIView *parent=gesture.view;
+    while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
+    long long identifier=parent ? DSAPINativeSpeechMessageID((__bridge void *)parent) : 0;
+    if (!identifier) return;
+    if (self.messageID==identifier && self.synth.speaking) {
+        [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.messageID=0; refreshSpeechIcons(); return;
+    }
+    NSDictionary *message=nil;
+    for (NSDictionary *session in DSLocalStore.shared.sessions) {
+        message=[DSLocalStore.shared message:@(identifier) session:session[@"id"]]; if (message) break;
+    }
+    NSMutableString *text=[NSMutableString string];
+    for (NSDictionary *fragment in message[@"fragments"]) if ([fragment[@"type"] isEqual:@"RESPONSE"] && [fragment[@"content"] isKindOfClass:NSString.class]) [text appendString:fragment[@"content"]];
+    if (!text.length) return;
+    [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+    AVSpeechUtterance *utterance=[AVSpeechUtterance speechUtteranceWithString:text];
+    utterance.voice=[AVSpeechSynthesisVoice voiceWithIdentifier:DSSelectedLocalVoice()];
+    self.messageID=identifier; self.activeUtterance=utterance; [self.synth speakUtterance:utterance];
+    [NSUserDefaults.standardUserDefaults setInteger:identifier forKey:@"DSAPIAdapter.lastSpokenMessageID"];
+    refreshSpeechIcons();
+}
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didStartSpeechUtterance:(AVSpeechUtterance *)utterance { refreshSpeechIcons(); }
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didFinishSpeechUtterance:(AVSpeechUtterance *)utterance {
+    if (utterance==self.activeUtterance) { self.messageID=0; self.activeUtterance=nil; }
+    refreshSpeechIcons();
+}
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didCancelSpeechUtterance:(AVSpeechUtterance *)utterance { refreshSpeechIcons(); }
+@end
+static void localSpeechLayout(id self,SEL selector) {
+    if (originalSpeechLayout) originalSpeechLayout(self,selector);
+    UIView *view=self;
+    if (!objc_getAssociatedObject(view,&speechGestureKey)) {
+        UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc] initWithTarget:DSNativeSpeaker.shared action:@selector(tap:)];
+        tap.cancelsTouchesInView=YES; view.userInteractionEnabled=YES; [view addGestureRecognizer:tap];
+        view.isAccessibilityElement=YES; view.accessibilityTraits=UIAccessibilityTraitButton; view.accessibilityIdentifier=@"DSAPI.ReadAloud";
+        objc_setAssociatedObject(view,&speechGestureKey,tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [speechViews addObject:view];
+    }
+    refreshSpeechIcons();
+}
+void DSInstallLocalSpeechUI(void) {
+    speechViews=[NSHashTable weakObjectsHashTable];
+    Class cls=NSClassFromString(@"_TtC13DeepSeek_Chat13TTSButtonView");
+    Method method=class_getInstanceMethod(cls,@selector(layoutSubviews));
+    if (!method) return;
+    originalSpeechLayout=(void *)method_getImplementation(method);
+    if (!class_addMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method)))
+        class_replaceMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method));
+}

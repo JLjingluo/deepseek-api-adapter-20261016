@@ -15,6 +15,7 @@ static NSData *(*DSOriginalGetData)(id,SEL,NSString *);
 static id (*DSOriginalSession)(id,SEL,NSURLSessionConfiguration *,id,NSOperationQueue *);
 static long long (*DSOriginalLocalHash)(id,SEL,NSString *,long long,NSString *);
 extern void DSInstallSettingsIntegration(void);
+extern void DSInstallLocalSpeechUI(void);
 
 static NSData *DSLocalUser(id self, SEL selector, NSString *key) {
     if ([key isEqualToString:@"currentUser"]) {
@@ -65,6 +66,7 @@ __attribute__((constructor)) static void DSInstall(void) {
     [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
     DSBootstrapMark("protocol-registered");
     DSInstallSettingsIntegration();
+    DSInstallLocalSpeechUI();
     Class pow = NSClassFromString(@"PowCalculator");
     SEL hash = NSSelectorFromString(@"solveHash256:diff:target:");
     if (pow && class_getClassMethod(pow,hash))

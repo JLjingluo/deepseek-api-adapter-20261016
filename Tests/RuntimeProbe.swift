@@ -13,6 +13,10 @@ public func runRuntimeProbe() {
         "ban_edit": false, "ban_regenerate": false, "tips": [], "conversation_mode": "CHAT",
         "search_enabled": false, "search_triggered": false, "extra_search_providers": []]
     let fixtures: [(String, Any)] = [
+        ("ServerModels.Response.TTSVoiceConfig", ["voices": [["voice_id": "local-voice", "name_i18n": ["en": "Local voice"],
+            "description_i18n": ["en": "Device speech"], "languages": ["en-US"], "demo_urls": ["en": "https://chat.deepseek.com/api/v0/chat/tts/local_demo/local-voice"],
+            "is_default": true, "color_palette": ["c1": "#496BFF", "c2": "#95ACFF", "c3": "#E5EAFF"]]],
+            "default_voice_id": "local-voice", "current_voice_id": "local-voice"]),
         ("AppModels.User", ["id": "local-api", "token": "local-api-no-official-account", "email": "",
             "mobile": "", "idProfiles": [], "chat": ["isMuted": 0], "needBirthday": false]),
         ("ServerModels.Session", session), ("ServerModels.Message", message),
@@ -78,6 +82,8 @@ public func runRuntimeProbe() {
         "mock_keychain_bypassed": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testKeychainBypassed"),
         "native_settings_items": UserDefaults.standard.array(forKey: "DSAPIAdapter.nativeSettingsItems") ?? [],
         "native_language": UserDefaults.standard.string(forKey: "DSAPIAdapter.nativeLanguage") ?? "not inferred",
+        "speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechVoice") ?? "device default",
+        "last_spoken_message_id": UserDefaults.standard.integer(forKey: "DSAPIAdapter.lastSpokenMessageID"),
         "mock_configuration_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.testConfigurationError") ?? "none",
         "fixtures": results, "views": views]
     if let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,

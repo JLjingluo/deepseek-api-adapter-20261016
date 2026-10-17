@@ -41,3 +41,24 @@ public func validateModelData(_ bytes: UnsafeRawPointer?, _ length: Int, _ cName
         return true
     } catch { return false }
 }
+
+@_cdecl("DSAPINativeSpeechMessageID")
+public func nativeSpeechMessageID(_ raw: UnsafeRawPointer?) -> Int64 {
+    guard let raw else { return 0 }
+    let object = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    func unwrap(_ value: Any) -> Any? {
+        let mirror = Mirror(reflecting: value)
+        return mirror.displayStyle == .optional ? mirror.children.first?.value : value
+    }
+    var mirror: Mirror? = Mirror(reflecting: object)
+    while let current = mirror {
+        if let stored = current.children.first(where: { $0.label == "lastMessage" }),
+           let message = unwrap(stored.value),
+           let identifier = Mirror(reflecting: message).children.first(where: { $0.label == "id" })?.value {
+            if let number = identifier as? Int { return Int64(number) }
+            if let number = identifier as? Int64 { return number }
+        }
+        mirror = current.superclassMirror
+    }
+    return 0
+}

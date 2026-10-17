@@ -2,6 +2,7 @@
 #import "DSLocalStore.h"
 #import "DSOpenAIClient.h"
 #import <CommonCrypto/CommonDigest.h>
+#import "DSVoiceCatalog.h"
 
 @implementation DSCompatibilityProtocol {
     BOOL _stopped;
@@ -113,6 +114,21 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     NSString *path = self.request.URL.path;
     [NSUserDefaults.standardUserDefaults setObject:path forKey:@"DSAPIAdapter.lastLocalRoute"];
     DSLocalStore *store = DSLocalStore.shared;
+    if ([path containsString:@"/chat/tts/local_demo/"]) {
+        NSString *identifier=path.lastPathComponent.stringByRemovingPercentEncoding;
+        DSGenerateLocalVoiceDemo(identifier,^(NSData *data,NSError *error) {
+            if (self->_stopped) return;
+            if (error || !data.length) { [self fail:@"语音试听不可用；请在 iPhone 设置中确认已下载所选音色。"]; return; }
+            [self responseType:@"audio/x-caf"]; [self.client URLProtocol:self didLoadData:data];
+            self->_stopped=YES; [self.client URLProtocolDidFinishLoading:self];
+        }); return;
+    }
+    if ([path hasSuffix:@"/chat/tts/voices"]) { [self json:DSLocalVoiceConfiguration()]; return; }
+    if ([path hasSuffix:@"/chat/tts/voice"]) {
+        NSString *identifier=p[@"voice_id"] ?: p[@"voiceID"];
+        if (![identifier isKindOfClass:NSString.class] || !DSSelectLocalVoice(identifier)) { [self fail:@"所选设备音色不可用。"]; return; }
+        [self json:DSLocalVoiceConfiguration()]; return;
+    }
     NSError *error = nil;
     NSString *sid = [p[@"chat_session_id"] isKindOfClass:NSString.class] ? p[@"chat_session_id"] : @"";
     if ([path hasSuffix:@"/chat_session/create"]) {

@@ -80,7 +80,7 @@ def build_simulator_adapter(app):
          '-swift-version', '5', '-O', '-emit-library', 'Sources/DSRuntimeValidation.swift',
          'Tests/RuntimeProbe.swift', *[str(p) for p in objects.glob('*.o')],
          '-Xlinker', '-install_name', '-Xlinker', '@rpath/DSAPIAdapter.dylib',
-         '-framework', 'Foundation', '-framework', 'UIKit', '-framework', 'Security',
+         '-framework', 'Foundation', '-framework', 'UIKit', '-framework', 'Security', '-framework', 'AVFoundation',
          '-o', str(library)])
     info = plistlib.loads((app/'Info.plist').read_bytes())
     executable = app/info['CFBundleExecutable']
@@ -101,7 +101,7 @@ def add_runtime_observer(app):
         '-swift-version', '5', '-O', '-emit-library', 'Tests/RuntimeProbe.swift', str(object_file),
         '-Xlinker', '-install_name',
         '-Xlinker', '@rpath/DSRuntimeProbe.dylib', '-framework', 'Foundation',
-        '-framework', 'UIKit', '-framework', 'Security', '-o', str(library)])
+        '-framework', 'UIKit', '-framework', 'Security', '-framework', 'AVFoundation', '-o', str(library)])
     info = plistlib.loads((app/'Info.plist').read_bytes())
     executable = app/info['CFBundleExecutable']
     patched, count = add_library(executable.read_bytes(), '@executable_path/Frameworks/DSRuntimeProbe.dylib')
