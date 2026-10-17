@@ -3,6 +3,9 @@
 #import "DSOpenAIClient.h"
 #import <CommonCrypto/CommonDigest.h>
 #import "DSVoiceCatalog.h"
+#if DSAPI_RUNTIME_DIAGNOSTICS
+extern BOOL DSAPIValidateModelData(const void *,NSInteger,const char *);
+#endif
 
 @implementation DSCompatibilityProtocol {
     BOOL _stopped;
@@ -77,6 +80,11 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     if (_stopped) return;
     NSData *json = [NSJSONSerialization dataWithJSONObject:body ?: @{} options:0 error:NULL];
     if (!json) { [self fail:@"无法编码流式消息。"]; return; }
+    #if DSAPI_RUNTIME_DIAGNOSTICS
+    NSString *type=[@{@"ready":@"ServerModels.Completion.ReadyChunk",@"title":@"ServerModels.Completion.TitleChunk",@"delta":@"ServerModels.POV",@"finish":@"ServerModels.Completion.FinishChunk"} objectForKey:name];
+    if (type) [NSUserDefaults.standardUserDefaults setBool:DSAPIValidateModelData(json.bytes,json.length,type.UTF8String)
+        forKey:[@"DSAPIAdapter.actualWireValid." stringByAppendingString:name]];
+    #endif
     NSString *value = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
     NSString *sse = [NSString stringWithFormat:@"event: %@\ndata: %@\n\n",name,value];
     [self.client URLProtocol:self didLoadData:[sse dataUsingEncoding:NSUTF8StringEncoding]];
@@ -215,7 +223,9 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 - (void)sendMessageStatus:(NSString *)status {
     NSMutableDictionary *message = [[DSLocalStore.shared message:_assistantID session:_sessionID] mutableCopy];
     message[@"fragments"] = [self fragments]; message[@"status"] = status; message[@"quasi_status"] = status;
-    [self event:@"delta" body:@{@"p":@"response",@"o":@"SET",@"v":message}];
+    // The native root owns its response object. Merge a root snapshot so the
+    // original POV layer updates that object instead of assigning its property.
+    [self event:@"delta" body:@{@"p":@"",@"o":@"SET",@"v":@{@"response":message}}];
 }
 - (void)finishStream:(NSString *)status error:(NSError *)error {
     if (_stopped) return;

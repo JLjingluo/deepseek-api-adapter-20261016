@@ -67,6 +67,17 @@ public func runRuntimeProbe() {
             "hidden": view.isHidden, "frame": NSCoder.string(for: view.frame)]
         if let label = view as? UILabel { item["text"] = label.text ?? "" }
         if let button = view as? UIButton { item["title"] = button.title(for: .normal) ?? "" }
+        if NSStringFromClass(type(of: view)).hasSuffix(".UserMessageCell") {
+            let mirror = Mirror(reflecting: view)
+            if let model = mirror.children.first(where: { $0.label == "currentMessage" })?.value {
+                let state = Mirror(reflecting: model).children.first(where: { $0.label == "clientStatus" })?.value
+                if let state {
+                    let value = String(reflecting: state)
+                    item["native_client_status"] = value
+                    UserDefaults.standard.set(value, forKey: "DSAPIAdapter.observedNativeClientStatus")
+                }
+            }
+        }
         views.append(item)
         for child in view.subviews { visit(child, depth + 1) }
     }
@@ -85,6 +96,7 @@ public func runRuntimeProbe() {
         "speech_voice": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechVoice") ?? "device default",
         "last_spoken_message_id": UserDefaults.standard.integer(forKey: "DSAPIAdapter.lastSpokenMessageID"),
         "speech_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.speechStatus") ?? "not started",
+        "observed_native_client_status": UserDefaults.standard.string(forKey: "DSAPIAdapter.observedNativeClientStatus") ?? "not observed",
         "mock_configuration_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.testConfigurationError") ?? "none",
         "fixtures": results, "views": views]
     if let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,

@@ -36,6 +36,10 @@ static void gatherLabels(UIView *root,NSMutableArray *labels) {
     if ([root isKindOfClass:UILabel.class]) [labels addObject:root];
     for (UIView *view in root.subviews) gatherLabels(view,labels);
 }
+static void refreshTables(UIView *root) {
+    if ([root isKindOfClass:UITableView.class]) [(UITableView *)root reloadData];
+    for (UIView *view in root.subviews) refreshTables(view);
+}
 static void presentAPI(id self,SEL selector) {
     [(UIViewController *)self presentViewController:DSAPICreateSettingsController() animated:YES completion:nil];
 }
@@ -62,7 +66,7 @@ static void profileLayout(id self,SEL selector) {
     NSMutableArray *labels=[NSMutableArray array]; gatherLabels(controller.view,labels);
     NSMutableArray *texts=[NSMutableArray array]; for (UILabel *label in labels) if (label.text.length) [texts addObject:label.text];
     if (DSObserveNativeSettingsLanguage(texts)) {
-        if ([controller isKindOfClass:UITableViewController.class]) [[(UITableViewController *)controller tableView] reloadData];
+        dispatch_async(dispatch_get_main_queue(),^{ refreshTables(controller.view); });
     }
     updateTitle(controller);
 }

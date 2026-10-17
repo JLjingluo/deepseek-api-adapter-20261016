@@ -180,7 +180,7 @@ def collect_ui_observations(device):
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
     if conditions: arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS='+' '.join(conditions))
     try:
-        outcome = run(arguments, timeout=480, check=False)
+        outcome = run(arguments, timeout=600, check=False)
     except subprocess.TimeoutExpired as error:
         output=error.stdout or ''
         if isinstance(output,bytes): output=output.decode(errors='replace')

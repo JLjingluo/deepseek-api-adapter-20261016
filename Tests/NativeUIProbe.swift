@@ -159,13 +159,25 @@ final class CaptureTests: XCTestCase {
                 XCTAssertNotEqual(toggle.value as? String, previous, "Personalization did not change")
             }
             if names[0] == "Language" {
-                // Observe the exact native language picker before choosing a
-                // language in a subsequent round; do not dismiss by guessing.
+                let chineseNames = ["简体中文", "中文（简体）", "Chinese, Simplified", "Chinese (Simplified)", "Simplified Chinese"]
+                let chinese = chineseNames.map { app.staticTexts[$0].firstMatch }.first { $0.exists && $0.isHittable }
+                XCTAssertNotNil(chinese, "Native Simplified Chinese language option is missing")
+                chinese?.tap()
+                Thread.sleep(forTimeInterval: 2)
+                capture(app, "settings-after-language-change")
+                print("DSAPI_LANGUAGE_CHANGED_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_LANGUAGE_CHANGED_END")
+                XCTAssertTrue(app.staticTexts["语言"].firstMatch.exists, "Original settings did not switch to Chinese")
+                XCTAssertTrue(app.staticTexts["用量统计"].firstMatch.exists, "Usage entry did not follow app language")
+                for forbidden in ["账号管理", "退出登录", "服务协议", "帮助与反馈"] {
+                    XCTAssertFalse(app.staticTexts[forbidden].firstMatch.isHittable, "Removed item returned after changing language: \(forbidden)")
+                }
                 app.terminate()
                 app.launch()
                 let sidebar = app.buttons["open_sidebar"].firstMatch
                 if sidebar.waitForExistence(timeout: 10) { sidebar.tap() }
                 let settings = app.buttons["DSAPI.SettingsEntry"].firstMatch
+                XCTAssertEqual(settings.label, "设置", "Sidebar settings label did not retain app language")
+                capture(app, "sidebar-after-language-change")
                 if settings.exists && settings.isHittable { settings.tap() }
             } else {
                 app.navigationBars.buttons.firstMatch.tap()
