@@ -55,7 +55,12 @@ final class CaptureTests: XCTestCase {
             format: "label CONTAINS %@ OR value CONTAINS %@", "流式输出正常", "流式输出正常")).firstMatch
         let firstPart = app.descendants(matching: .any).matching(NSPredicate(
             format: "label CONTAINS %@ OR value CONTAINS %@", "首段流式回复", "首段流式回复")).firstMatch
-        XCTAssertTrue(firstPart.waitForExistence(timeout: 15), "The first streamed fragment was not rendered")
+        let firstReceived = firstPart.waitForExistence(timeout: 15)
+        if !firstReceived {
+            capture(app, "streaming-failure")
+            print("DSAPI_CHAT_FAILURE_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_CHAT_FAILURE_END")
+        }
+        XCTAssertTrue(firstReceived, "The first streamed fragment was not rendered")
         capture(app, "streaming-first-part")
         XCTAssertFalse(reply.exists, "The first fragment was only visible after the complete reply")
         let received = reply.waitForExistence(timeout: 25)
@@ -76,6 +81,8 @@ final class CaptureTests: XCTestCase {
             if settings.exists && settings.isHittable {
                 settings.tap()
                 Thread.sleep(forTimeInterval: 1)
+                capture(app, "original-settings")
+                print("DSAPI_SETTINGS_HIERARCHY_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_SETTINGS_HIERARCHY_END")
                 let api = app.buttons["API"].firstMatch
                 if api.exists && api.isHittable {
                     api.tap()
