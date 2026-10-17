@@ -49,7 +49,7 @@ jobs:
               for path in pathlib.Path('diagnostics').rglob('*'):
                   if path.is_file(): z.write(path,path.as_posix())
           PY
-          gh release create "probe-results-${GITHUB_RUN_NUMBER}" --target "$GITHUB_SHA" --prerelease \
+          gh release create "probe-results-${GITHUB_RUN_NUMBER}" --target "$GITHUB_REF_NAME" --prerelease \
             --title "Original binary simulator probe ${GITHUB_RUN_NUMBER}" \
             --notes "Diagnostics only. No original binary. A baseline probe does not establish UI equivalence." \
             probe-diagnostics.zip

@@ -61,12 +61,17 @@ def probe():
     if report['architecture'] != 'arm64':
         raise RuntimeError('ARM runner is required')
     report['xcode'] = run(['xcodebuild', '-version']).stdout
+    sdk_version = run(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version']).stdout.strip()
+    report['simulator_sdk'] = sdk_version
     runtimes = json.loads(run(['xcrun', 'simctl', 'list', 'runtimes', '-j']).stdout)['runtimes']
     (diagnostics/'runtimes.json').write_text(json.dumps(runtimes, indent=2))
-    choices = [r for r in runtimes if r.get('isAvailable') and 'iOS' in r['name']]
+    # Use the runtime belonging to the selected Xcode rather than an unrelated,
+    # newer runtime that happens to be preinstalled in the runner image.
+    choices = [r for r in runtimes if r.get('isAvailable') and 'iOS' in r['name']
+               and r['version'].split('.')[:2] == sdk_version.split('.')[:2]]
     choices.sort(key=lambda r: tuple(map(int, r['version'].split('.'))), reverse=True)
     if not choices:
-        raise RuntimeError('No installed iOS simulator runtime')
+        raise RuntimeError('No installed iOS simulator runtime matching the selected SDK')
     runtime = choices[0]
     types = json.loads(run(['xcrun', 'simctl', 'list', 'devicetypes', '-j']).stdout)['devicetypes']
     phones = [d for d in types if d['name'].startswith('iPhone') and 'SE' not in d['name']]
@@ -146,6 +151,11 @@ def probe():
     for extension in sorted(app.rglob('*.appex'), key=lambda p: len(p.parts), reverse=True):
         run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(extension)])
     run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
+    verification = run(['codesign', '--verify', '--deep', '--strict', '--verbose=4', str(app)], check=False)
+    (diagnostics/'signature-verification.txt').write_text(verification.stdout)
+    report['signature_verify_exit_code'] = verification.returncode
+    signature = run(['codesign', '-d', '--verbose=4', '--entitlements', ':-', str(app)], check=False)
+    (diagnostics/'signature-metadata.txt').write_text(signature.stdout)
     install = run(['xcrun', 'simctl', 'install', device, str(app)], check=False)
     report['install_exit_code'] = install.returncode
     (diagnostics/'install.txt').write_text(install.stdout)
@@ -173,6 +183,10 @@ def probe():
     logs = run(['xcrun', 'simctl', 'spawn', device, 'log', 'show', '--last', '2m', '--style', 'compact',
         '--predicate', 'process == "DeepSeek Chat"'], timeout=60, check=False)
     (diagnostics/'application.log').write_text(logs.stdout)
+    host_logs = run(['log', 'show', '--last', '3m', '--style', 'compact', '--predicate',
+        'eventMessage CONTAINS[c] "DeepSeek Chat" OR eventMessage CONTAINS[c] "com.deepseek.chat"'],
+        timeout=60, check=False)
+    (diagnostics/'host-signing.log').write_text(host_logs.stdout)
     for path in pathlib.Path.home().joinpath('Library/Logs/DiagnosticReports').glob('*'):
         if path.is_file() and ('DeepSeek' in path.name or path.stat().st_mtime > time.time()-180):
             if path.stat().st_size < 8*1024*1024:
