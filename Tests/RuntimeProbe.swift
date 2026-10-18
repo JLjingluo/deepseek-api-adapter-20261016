@@ -114,7 +114,7 @@ public func runRuntimeProbe() {
                     var model:Any=file
                     if Mirror(reflecting:model).displayStyle == .optional,let value=Mirror(reflecting:model).children.first?.value { model=value }
                     var state:[String:String]=[:]
-                    for child in Mirror(reflecting:model).children where ["_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
+                    for child in Mirror(reflecting:model).children where ["id","uploadTask","_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
                         state[child.label ?? "?"]=String(reflecting:child.value)
                         if child.label == "_status" {
                             var output=""; dump(child.value,to:&output,maxDepth:5,maxItems:35); state["status_detail"]=output
@@ -136,6 +136,8 @@ public func runRuntimeProbe() {
     }
     let report: [String: Any] = ["scope": "simulator-only fixture and view observation",
         "bootstrap": UserDefaults.standard.string(forKey: "DSAPIAdapter.bootstrapStatus") ?? "not reported",
+        "swift_upload_errors": UserDefaults.standard.array(forKey:"DSAPIAdapter.probeSwiftUploadErrors") ?? [],
+        "swift_error_hook_installed": UserDefaults.standard.bool(forKey:"DSAPIAdapter.probeSwiftErrorHookInstalled"),
         "last_attachment_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastAttachmentError") ?? "none",
         "last_attachment_import": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastAttachmentImport") ?? [:],
         "last_route": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastLocalRoute") ?? "none",

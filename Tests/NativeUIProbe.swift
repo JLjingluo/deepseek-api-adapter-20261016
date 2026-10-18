@@ -62,7 +62,7 @@ final class CaptureTests: XCTestCase {
         let model=app.textFields["Model"].firstMatch
         XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
         model.tap(); model.typeText("-manual"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
-        app.navigationBars.firstMatch.tap()
+        dismissKeyboardHelp(app)
         let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
         app.buttons["Max"].firstMatch.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)
         let provider=app.cells["DSAPI.Provider"].firstMatch; XCTAssertTrue(reveal(app,provider,up:false)); provider.tap()
@@ -90,7 +90,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(history.waitForExistence(timeout:15)); history.tap()
         let oldReply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","earlier answer","earlier answer")).firstMatch
         XCTAssertTrue(oldReply.waitForExistence(timeout:15)); capture(app,"original-history-in-api-mode")
-        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled }); input.tap(); input.typeText("API cloud continuation test"); dismissKeyboardHelp(app)
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY }); input.tap(); input.typeText("API cloud continuation test"); dismissKeyboardHelp(app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout:35)); capture(app,"cloud-history-api-continuation")
@@ -108,7 +108,7 @@ final class CaptureTests: XCTestCase {
         let skip=app.buttons["DSAPI.SkipLogin"].firstMatch
         XCTAssertTrue(skip.waitForExistence(timeout:10)); capture(app,"skip-login-choice"); skip.tap()
         #if DSAPI_GUEST_ORIGINAL
-        let guestInput=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        let guestInput=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         guestInput.tap(); guestInput.typeText("guest sign in prompt test"); dismissKeyboardHelp(app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:15)); capture(app,"guest-sign-in-or-api")
@@ -118,7 +118,7 @@ final class CaptureTests: XCTestCase {
         app.buttons["DSAPI.Save"].tap(); let restart=app.alerts.firstMatch; XCTAssertTrue(restart.waitForExistence(timeout:10)); restart.buttons.firstMatch.tap()
         app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
         #endif
-        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         input.tap(); input.typeText("API integration test"); dismissKeyboardHelp(app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
@@ -194,7 +194,7 @@ final class CaptureTests: XCTestCase {
     #endif
     private func runNativeImage(prompt:String,expected:String) throws {
         let app=openNativeApp()
-        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         input.tap()
         dismissKeyboardHelp(app)
         input.typeText(prompt)
@@ -240,7 +240,13 @@ final class CaptureTests: XCTestCase {
     @discardableResult private func reveal(_ app:XCUIApplication,_ element:XCUIElement,up:Bool=true) -> Bool {
         for _ in 0..<10 {
             if element.exists && element.isHittable { return true }
-            if up { app.swipeUp() } else { app.swipeDown() }
+            let height=app.frame.height
+            let keyboard=app.keyboards.firstMatch
+            let bottom=keyboard.exists ? min(keyboard.frame.minY,height) : height
+            let low=max(0.35,min(0.75,(bottom-30)/height)), high=max(0.18,low-0.30)
+            let start=app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:up ? low : high))
+            let end=app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:up ? high : low))
+            start.press(forDuration:0.05,thenDragTo:end)
         }
         return element.exists && element.isHittable
     }

@@ -16,6 +16,36 @@ static id DSLoadLocalFixture(id cls,SEL selector) {
     return configuration;
 }
 
+// Disposable simulator only: use Swift's public runtime debugging hook to
+// retain the real serialization error before the app maps it to _systemError.
+static void (*oldWillThrow)(void *);
+static void (*retainSwiftError)(void *);
+static void *(*bridgeSwiftError)(void *);
+static __thread BOOL recordingSwiftError;
+static void probeWillThrow(void *raw) {
+    if (!recordingSwiftError && raw && [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.lastAttachmentImport"]) {
+        recordingSwiftError=YES;
+        @try {
+            retainSwiftError(raw);
+            NSError *error=CFBridgingRelease(bridgeSwiftError(raw));
+            NSString *detail=error.userInfo[NSDebugDescriptionErrorKey] ?: error.description ?: @"";
+            if (detail.length>1800) detail=[detail substringToIndex:1800];
+            @synchronized(NSUserDefaults.class) {
+                NSMutableArray *errors=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.probeSwiftUploadErrors"] mutableCopy] ?: [NSMutableArray array];
+                if (errors.count<40) { [errors addObject:@{@"domain":error.domain ?: @"",@"code":@(error.code),@"description":detail}]; [NSUserDefaults.standardUserDefaults setObject:errors forKey:@"DSAPIAdapter.probeSwiftUploadErrors"]; }
+            }
+        } @finally { recordingSwiftError=NO; }
+    }
+    if (oldWillThrow) oldWillThrow(raw);
+}
+static void installSwiftErrorProbe(void) {
+    void **slot=dlsym(RTLD_DEFAULT,"_swift_willThrow");
+    retainSwiftError=dlsym(RTLD_DEFAULT,"swift_errorRetain"); bridgeSwiftError=dlsym(RTLD_DEFAULT,"_swift_stdlib_bridgeErrorToNSError");
+    if (slot && retainSwiftError && bridgeSwiftError) {
+        oldWillThrow=(void *)__atomic_exchange_n(slot,(void *)probeWillThrow,__ATOMIC_ACQ_REL);
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.probeSwiftErrorHookInstalled"];
+    }
+}
 static BOOL preparingFixture;
 static BOOL (*originalProbeSaveKey)(id,SEL,NSData *,NSError **);
 static BOOL DSProbeSaveKey(id self,SEL selector,NSData *data,NSError **error) {
@@ -149,7 +179,7 @@ static void DSPrepareMockConfiguration(void) {
 
 }
 __attribute__((constructor)) static void DSInstallRuntimeProbe(void) {
-    DSInstallAccountFixture();
+    DSInstallAccountFixture(); installSwiftErrorProbe();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         DSPrepareMockConfiguration();
         DSAPIRunRuntimeProbe();
