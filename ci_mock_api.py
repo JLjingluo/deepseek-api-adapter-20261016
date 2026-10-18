@@ -55,7 +55,7 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
                 self.send_error(400)
                 return
             messages = body.get('messages', [])
-            image_case=any(isinstance(m.get('content'),list) and any(p.get('type')=='image_url' for p in m['content'] if isinstance(p,dict)) for m in messages)
+            image_case=bool(messages and isinstance(messages[-1].get('content'),list) and any(p.get('type')=='image_url' for p in messages[-1]['content'] if isinstance(p,dict)))
             cancel_case=bool(messages and messages[-1].get('content') == 'API cancellation test')
             record = {'path': self.path, 'model': body.get('model'), 'stream': body.get('stream'),
                 'message_count': len(messages), 'roles': [m.get('role') for m in messages],

@@ -2,6 +2,7 @@
 #import "DSCompatibilityProtocol.h"
 #import "DSLocalStore.h"
 #import "DSAPIConfiguration.h"
+#import "DSAttachmentStore.h"
 #import <objc/runtime.h>
 #include <string.h>
 static NSDictionary *retryPayload;
@@ -147,6 +148,24 @@ int main(int argc,const char *argv[]) {
         check([[[DSLocalStore.shared messages:sid].lastObject objectForKey:@"parent_id"] isEqual:question],@"native regeneration keeps the original question as parent");
         NSInteger userCount=0; for (NSDictionary *message in [DSLocalStore.shared messages:sid]) if ([message[@"role"] isEqual:@"USER"]) userCount++;
         check(userCount==1,@"regeneration never creates another copy of the user question");
+        NSData *png=[[NSData alloc] initWithBase64EncodedString:@"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC" options:0];
+        NSMutableURLRequest *upload=[NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/file/upload_file"]];
+        [upload setValue:@"multipart/form-data; boundary=image-test" forHTTPHeaderField:@"Content-Type"];
+        NSMutableData *body=[[@"--image-test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"red.png\"\r\nContent-Type: image/png\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
+        [body appendData:png]; [body appendData:[@"\r\n--image-test--\r\n" dataUsingEncoding:NSUTF8StringEncoding]]; upload.HTTPBody=body;
+        NSError *fileError=nil; NSDictionary *file=[DSAttachmentStore.shared importRequest:upload error:&fileError];
+        check(file!=nil && !fileError,@"image imported locally without original auth or PoW headers");
+        Capture *withImage=request(@"/chat/completion",@{@"chat_session_id":sid,@"parent_message_id":assistant,@"prompt":@"看图",@"ref_file_ids":@[file[@"id"]]});
+        check(!withImage.error,@"native image completion reaches the compatible API");
+        NSArray *parts=retryPayload[@"messages"][[retryPayload[@"messages"] count]-1][@"content"];
+        check([parts isKindOfClass:NSArray.class] && parts.count==2 && [parts[0][@"text"] isEqual:@"看图"] && [parts[1][@"type"] isEqual:@"image_url"],@"last user turn preserves text and multimodal image");
+        NSArray *retained=[DSLocalStore.shared apiHistory:sid endingAt:[DSLocalStore.shared messages:sid].lastObject[@"parent_id"] error:&fileError];
+        check([retained.lastObject[@"content"] isKindOfClass:NSArray.class],@"image context survives replay and is not dropped");
+        NSDictionary *found=payload(request(@"/file/fetch_files",@{@"file_ids":@[file[@"id"]]}));
+        check([found[@"files"] count]==1,@"native upload polling returns the local file");
+        NSUInteger countBefore=[DSLocalStore.shared messages:sid].count;
+        check(request(@"/chat/completion",@{@"chat_session_id":sid,@"prompt":@"missing",@"ref_file_ids":@[@"api-file-missing"]}).error!=nil,@"missing attachment fails before sending partial content");
+        check([DSLocalStore.shared messages:sid].count==countBefore,@"missing attachments do not mutate chat history");
         check(configurationReadOffMain,@"chat configuration and keychain reads never block the UI thread");
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==0,@"delete updates native inventory");

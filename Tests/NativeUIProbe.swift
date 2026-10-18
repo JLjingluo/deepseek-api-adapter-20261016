@@ -237,11 +237,11 @@ final class CaptureTests: XCTestCase {
         let avatar=app.images["sidebar/userAvatar"].firstMatch
         if avatar.exists && avatar.isHittable { avatar.tap() }
         else {
-            let entry=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@ OR label == %@","My Profile","Settings","我的资料","设置")).firstMatch
+            let entry=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@ OR label == %@","My Profile","Settings","个人信息","设置")).firstMatch
             if entry.exists && entry.isHittable { entry.tap() }
             else { app.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.94)).tap() }
         }
-        let profile=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","My Profile","Settings","设置")).firstMatch
+        let profile=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@ OR label == %@","My Profile","Settings","设置","个人信息")).firstMatch
         if !app.buttons["DSAPI.APISettings"].firstMatch.exists && profile.exists && profile.isHittable { profile.tap() }
         return app.buttons["DSAPI.APISettings"].firstMatch.waitForExistence(timeout:10)
     }
