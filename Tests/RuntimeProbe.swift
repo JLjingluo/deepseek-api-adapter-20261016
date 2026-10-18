@@ -109,6 +109,7 @@ public func runRuntimeProbe() {
     let report: [String: Any] = ["scope": "simulator-only fixture and view observation",
         "bootstrap": UserDefaults.standard.string(forKey: "DSAPIAdapter.bootstrapStatus") ?? "not reported",
         "last_route": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastLocalRoute") ?? "none",
+        "last_chat_request_summary": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastChatRequestSummary") ?? [:],
         "mock_configuration_saved": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testConfigurationSaved"),
         "mock_keychain_bypassed": UserDefaults.standard.bool(forKey: "DSAPIAdapter.testKeychainBypassed"),
         "native_settings_items": UserDefaults.standard.array(forKey: "DSAPIAdapter.nativeSettingsItems") ?? [],

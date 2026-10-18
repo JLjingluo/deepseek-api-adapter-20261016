@@ -17,7 +17,7 @@ on:
       test_focus:
         description: Run the complete native suite or focus on settings
         type: choice
-        options: [all, settings]
+        options: [all, settings, regeneration]
         default: all
 permissions:
   contents: write

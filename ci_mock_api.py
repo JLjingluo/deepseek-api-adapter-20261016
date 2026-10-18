@@ -58,7 +58,7 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             cancel_case=bool(messages and messages[-1].get('content') == 'API cancellation test')
             record = {'path': self.path, 'model': body.get('model'), 'stream': body.get('stream'),
                 'message_count': len(messages), 'roles': [m.get('role') for m in messages],
-                'scenario': 'cancel' if cancel_case else 'normal',
+                'scenario': 'cancel' if cancel_case else ('regenerate' if messages and messages[-1].get('content') == 'API regeneration test' else 'normal'),
                 'dummy_authorization_valid': self.headers.get('Authorization') == 'Bearer ci-dummy-key'}
             with lock:
                 records.append(record)

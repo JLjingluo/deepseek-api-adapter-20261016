@@ -172,9 +172,10 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings'):
+    if focus not in ('', 'all', 'settings', 'regeneration'):
         raise RuntimeError('Unknown native test focus')
-    target = 'NativeUIProbeUITests/CaptureTests' + ('/testNativeSettings' if focus == 'settings' else '')
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration'}.get(focus)
+    target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
         '-resultBundlePath', str(results), '-only-testing:'+target,
@@ -192,7 +193,7 @@ def collect_ui_observations(device):
         report['ui_test_timed_out']=True
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
-    report['ui_test_scope'] = ('native settings only' if focus == 'settings' else
+    report['ui_test_scope'] = ('native '+focus+' only' if selected else
         ('native streaming, cancellation, read-aloud and settings' if report.get('mock_api_base_url') else 'startup and settings'))
     if results.exists():
         exported = run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(results),

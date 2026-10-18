@@ -121,6 +121,15 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     if (!p) { [self fail:@"请求体无效或超过本地资源限制。"]; return; }
     NSString *path = self.request.URL.path;
     [NSUserDefaults.standardUserDefaults setObject:path forKey:@"DSAPIAdapter.lastLocalRoute"];
+    #if DSAPI_RUNTIME_DIAGNOSTICS
+    if ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"]) {
+        NSMutableDictionary *summary=[@{@"path":path,@"keys":[p.allKeys sortedArrayUsingSelector:@selector(compare:)],
+            @"prompt_length":@([p[@"prompt"] isKindOfClass:NSString.class] ? [p[@"prompt"] length] : 0)} mutableCopy];
+        for (NSString *key in @[@"action",@"parent_message_id",@"message_id",@"child_message_id",@"thinking_enabled"])
+            if ([p[key] isKindOfClass:NSString.class] || [p[key] isKindOfClass:NSNumber.class]) summary[key]=p[key];
+        [NSUserDefaults.standardUserDefaults setObject:summary forKey:@"DSAPIAdapter.lastChatRequestSummary"];
+    }
+    #endif
     DSLocalStore *store = DSLocalStore.shared;
     if ([path containsString:@"/chat/tts/local_demo/"]) {
         NSString *identifier=path.lastPathComponent.stringByRemovingPercentEncoding;

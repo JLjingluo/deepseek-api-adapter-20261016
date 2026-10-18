@@ -148,6 +148,31 @@ final class CaptureTests: XCTestCase {
         #endif
     }
 
+    func testNativeRegeneration() throws {
+        #if DSAPI_MOCK_UI
+        let app = openNativeApp()
+        let input = app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled && $0.frame.minY > app.frame.height*0.5 }
+        let field = try XCTUnwrap(input, "Native input is missing")
+        field.tap(); field.typeText("API regeneration test")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: field.frame.maxX-20, dy: field.frame.maxY+32)).tap()
+        let visibleRegenerate = NSPredicate { _, _ in app.buttons["Regenerate"].allElementsBoundByIndex.contains { $0.isHittable } }
+        expectation(for: visibleRegenerate, evaluatedWith: app)
+        waitForExpectations(timeout: 30)
+        let regenerate = try XCTUnwrap(app.buttons["Regenerate"].allElementsBoundByIndex.first { $0.isHittable })
+        capture(app, "before-native-regeneration")
+        regenerate.tap()
+        let stop = app.buttons["Stop"].firstMatch
+        let started = stop.waitForExistence(timeout: 10)
+        capture(app, "native-regeneration-started")
+        print("DSAPI_REGENERATION_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_REGENERATION_END")
+        XCTAssertTrue(started, "Original regenerate action did not start a new stream")
+        expectation(for: NSPredicate { _, _ in !app.buttons["Stop"].allElementsBoundByIndex.contains { $0.isHittable } }, evaluatedWith: app)
+        waitForExpectations(timeout: 30)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "流式输出正常")).firstMatch.exists)
+        capture(app, "native-regeneration-finished")
+        #endif
+    }
+
     private func inspectSettings(_ app: XCUIApplication) -> Bool {
         let sidebar = app.buttons["open_sidebar"].firstMatch
         if sidebar.exists && sidebar.isHittable {
