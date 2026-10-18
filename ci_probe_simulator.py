@@ -25,14 +25,17 @@ report['packaged_adapter'] = packaged_adapter
 
 
 def run(args, *, timeout=120, check=True):
+    started = time.monotonic()
+    print('$', ' '.join(str(x) for x in args), flush=True)
     try:
         result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     except subprocess.TimeoutExpired as error:
         output=error.stdout or ''
         if isinstance(output,bytes): output=output.decode(errors='replace')
         (diagnostics/('timeout-'+pathlib.Path(str(args[0])).name+'.log')).write_text(output[-128000:])
+        report['steps'].append({'command':str(args[0]),'seconds':round(time.monotonic()-started,2),'timed_out':True})
         raise
-    print('$', ' '.join(str(x) for x in args), flush=True)
+    report['steps'].append({'command':str(args[0]),'seconds':round(time.monotonic()-started,2),'returncode':result.returncode})
     print(result.stdout[-16000:], flush=True)
     if check and result.returncode:
         report['failed_command'] = {'argv': [str(x) for x in args], 'output': result.stdout[-16000:]}
@@ -191,6 +194,7 @@ def collect_ui_observations(device):
         if isinstance(output,bytes): output=output.decode(errors='replace')
         outcome=subprocess.CompletedProcess(arguments,124,output)
         report['ui_test_timed_out']=True
+        capture_startup_threads()
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
     report['ui_test_scope'] = ('native '+focus+' only' if selected else
