@@ -172,7 +172,10 @@ final class CaptureTests: XCTestCase {
                 usage.tap()
                 capture(app, "usage-dashboard")
                 print("DSAPI_USAGE_BEGIN\n" + String(app.debugDescription.suffix(16000)) + "\nDSAPI_USAGE_END")
-                app.navigationBars.buttons.firstMatch.tap()
+                let closeUsage = app.buttons["DSAPI.CloseUsage"].firstMatch
+                XCTAssertTrue(closeUsage.waitForExistence(timeout: 5) && closeUsage.isHittable)
+                closeUsage.tap()
+                XCTAssertTrue(app.cells["DSAPI.VoicePicker"].firstMatch.waitForExistence(timeout: 5))
                 inspectNativePreferences(app)
                 #endif
                 let knownAPI = app.buttons["DSAPI.APISettings"].firstMatch
@@ -251,7 +254,10 @@ final class CaptureTests: XCTestCase {
                 capture(app, "sidebar-after-language-change")
                 if settings.exists && settings.isHittable { settings.tap() }
             } else {
-                app.navigationBars.buttons.firstMatch.tap()
+                let topNavigation = app.navigationBars.allElementsBoundByIndex.last
+                let back = topNavigation?.buttons.allElementsBoundByIndex.first(where: { $0.isHittable })
+                XCTAssertNotNil(back, "Native preference navigation button is missing")
+                back?.tap()
             }
         }
     }

@@ -8,6 +8,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad]; self.title=DSAPILocalized(@"usage");
     self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(close)];
+    self.navigationItem.leftBarButtonItem.accessibilityIdentifier=@"DSAPI.CloseUsage";
     self.refreshControl=[UIRefreshControl new]; [self.refreshControl addTarget:self action:@selector(reloadUsage) forControlEvents:UIControlEventValueChanged];
     [self reloadUsage];
 }

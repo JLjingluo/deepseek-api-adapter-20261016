@@ -68,9 +68,9 @@ public func runRuntimeProbe() {
         if let label = view as? UILabel { item["text"] = label.text ?? "" }
         if let button = view as? UIButton { item["title"] = button.title(for: .normal) ?? "" }
         if let table = view as? UITableView {
-            item["delegate_class"] = table.delegate.map { NSStringFromClass(type(of: $0)) } ?? "none"
+            item["delegate_class"] = table.delegate.map { NSStringFromClass(type(of: $0 as AnyObject)) } ?? "none"
             if let source = table.dataSource {
-                item["data_source_class"] = NSStringFromClass(type(of: source))
+                item["data_source_class"] = NSStringFromClass(type(of: source as AnyObject))
                 item["data_source_fields"] = Mirror(reflecting: source).children.map {
                     "\($0.label ?? "unnamed"): \(String(reflecting: type(of: $0.value)))"
                 }
