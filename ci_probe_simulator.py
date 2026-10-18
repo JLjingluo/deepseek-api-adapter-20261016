@@ -330,6 +330,9 @@ def probe():
     preferences.parent.mkdir(parents=True,exist_ok=True)
     values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
     values['DSAPIAdapter.configuration.v1']={'enabled':startup_mode=='api'}
+    if report.get('mock_api_base_url'):
+        values['DSAPIAdapter.localTestFixture']={'baseURL':report['mock_api_base_url']}
+        values['DSAPIAdapter.configuration.v1'].update({'baseURL':report['mock_api_base_url'],'model':'ci-mock-model','timeout':180,'requestUsage':True})
     preferences.write_bytes(plistlib.dumps(values))
     report['startup_api_mode']=startup_mode=='api'
     launch = launch_application(device, bundle)

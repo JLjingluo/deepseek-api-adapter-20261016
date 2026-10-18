@@ -6,6 +6,7 @@
 @property(nonatomic, strong) DSAPIConfiguration *configuration;
 @property(nonatomic, strong) NSArray<UITextField *> *fields;
 @property(nonatomic, strong) UIFont *bodyFont;
+@property(nonatomic) BOOL saving;
 @end
 @implementation DSAPISettingsViewController
 - (instancetype)init {
@@ -20,6 +21,8 @@
     self.navigationItem.leftBarButtonItem.accessibilityLabel=DSOriginalLocalized(@"cancel");
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:DSOriginalLocalized(@"imagePreviewSavePhoto") style:UIBarButtonItemStyleDone
         target:self action:@selector(save)];
+    self.navigationItem.rightBarButtonItem.accessibilityIdentifier=@"DSAPI.Save";
+    self.navigationItem.leftBarButtonItem.accessibilityIdentifier=@"DSAPI.Cancel";
     NSMutableArray *fields = [NSMutableArray array];
     NSArray *values = @[self.configuration.baseURL, self.configuration.apiKey,
         self.configuration.model, self.configuration.reasoningModel, self.configuration.systemPrompt,
@@ -97,6 +100,7 @@
 - (void)usageOptionChanged:(UISwitch *)sender { self.configuration.requestUsage=sender.on; }
 - (void)cancel { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)save {
+    if (self.saving) return;
     [self.view endEditing:YES];
     self.configuration.baseURL = self.fields[0].text ?: @"";
     self.configuration.apiKey = self.fields[1].text ?: @"";
@@ -104,16 +108,36 @@
     self.configuration.reasoningModel = self.fields[3].text ?: @"";
     self.configuration.systemPrompt = self.fields[4].text ?: @"";
     self.configuration.timeout = self.fields[5].text.doubleValue;
-    NSError *error = nil;
-    if (![self.configuration save:&error]) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
+    self.saving=YES;
+    self.navigationItem.leftBarButtonItem.enabled=NO;
+    self.navigationItem.rightBarButtonItem.enabled=NO;
+    self.tableView.userInteractionEnabled=NO;
+    DSAPIConfiguration *configuration=self.configuration;
+    // Keychain can wait on the device security service. Never hold the UI thread.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        NSError *error=nil; BOOL saved=[configuration save:&error];
+        dispatch_async(dispatch_get_main_queue(),^{ [self didSave:saved error:error]; });
+    });
+}
+- (void)didSave:(BOOL)saved error:(NSError *)error {
+    self.saving=NO;
+    self.navigationItem.leftBarButtonItem.enabled=YES;
+    self.navigationItem.rightBarButtonItem.enabled=YES;
+    self.tableView.userInteractionEnabled=YES;
+    if (!self.view.window) return;
+    if (!saved) {
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
             message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }
     if (self.configuration.enabled!=DSAPIIsEnabled()) {
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"restartTitle") message:DSAPILocalized(@"modeNote") preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self dismissViewControllerAnimated:YES completion:nil]; }]];
+        __weak typeof(self) weakSelf=self;
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            // Let UIKit dismiss the alert before dismissing its presenting page.
+            dispatch_async(dispatch_get_main_queue(),^{ [weakSelf dismissViewControllerAnimated:YES completion:nil]; });
+        }]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }
     [self dismissViewControllerAnimated:YES completion:nil];

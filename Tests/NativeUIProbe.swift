@@ -174,65 +174,95 @@ final class CaptureTests: XCTestCase {
         #endif
     }
 
-    private func inspectSettings(_ app: XCUIApplication) -> Bool {
-        let sidebar = app.buttons["open_sidebar"].firstMatch
-        if sidebar.exists && sidebar.isHittable {
-            sidebar.tap()
-            Thread.sleep(forTimeInterval: 1)
-            capture(app, "sidebar")
-            print("DSAPI_SIDEBAR_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_SIDEBAR_END")
-            #if DSAPI_ADAPTER_UI
-            let directSettings = app.buttons["DSAPI.SettingsEntry"].firstMatch
-            XCTAssertTrue(directSettings.exists && directSettings.isHittable, "Sidebar footer must be a Settings entry")
-            XCTAssertFalse(directSettings.label.localizedCaseInsensitiveContains("profile"))
-            let avatar=app.images["sidebar/userAvatar"].firstMatch
-            XCTAssertFalse(avatar.exists && avatar.isHittable, "Account avatar must be removed")
-            #endif
-            let settings = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS %@", "setting", "profile", "设置")).firstMatch
-            if settings.exists && settings.isHittable {
-                settings.tap()
-                Thread.sleep(forTimeInterval: 1)
-                capture(app, "original-settings")
-                print("DSAPI_SETTINGS_HIERARCHY_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_SETTINGS_HIERARCHY_END")
-                #if DSAPI_ADAPTER_UI
-                for name in ["Account settings", "Account Settings", "Account management", "Account Management", "账号管理", "帳戶管理", "帳號管理", "Log out", "Log Out", "退出登录", "登出", "Help & Feedback", "帮助与反馈", "Service agreement", "服务协议"] {
-                    XCTAssertFalse(app.staticTexts[name].firstMatch.exists, "Removed setting is still present: \(name)")
-                }
-                let usage = app.cells["DSAPI.Usage"].firstMatch
-                XCTAssertTrue(usage.exists && usage.isHittable, "Data controls must become API Usage")
-                usage.tap()
-                capture(app, "usage-dashboard")
-                print("DSAPI_USAGE_BEGIN\n" + String(app.debugDescription.suffix(16000)) + "\nDSAPI_USAGE_END")
-                let closeUsage = app.buttons["DSAPI.CloseUsage"].firstMatch
-                XCTAssertTrue(closeUsage.waitForExistence(timeout: 5) && closeUsage.isHittable)
-                closeUsage.tap()
-                XCTAssertTrue(app.cells["DSAPI.VoicePicker"].firstMatch.waitForExistence(timeout: 5))
-                inspectNativePreferences(app)
-                #endif
-                let knownAPI = app.buttons["DSAPI.APISettings"].firstMatch
-                let api = knownAPI.exists ? knownAPI : app.buttons["API"].firstMatch
-                if api.exists && api.isHittable {
-                    api.tap()
-                    XCTAssertTrue(app.textFields["Base URL"].waitForExistence(timeout: 5))
-                    XCTAssertTrue(app.secureTextFields["API Key"].exists)
-                    let usageOption=app.switches["DSAPI.RequestUsage"].firstMatch
-                    XCTAssertTrue(usageOption.exists, "Compatible API usage option is missing")
-                    if usageOption.exists && usageOption.isHittable {
-                        XCTAssertEqual(usageOption.value as? String, "1")
-                        usageOption.tap()
-                        XCTAssertEqual(usageOption.value as? String, "0")
-                        usageOption.tap()
-                    }
-                    capture(app, "api-settings")
-                    return true
-                }
-            }
+    func testNativeServiceSwitching() throws {
+        #if DSAPI_MOCK_UI
+        continueAfterFailure=false
+        let app=XCUIApplication(bundleIdentifier: "com.deepseek.chat")
+        app.terminate()
+        app.launchArguments=["-DSAPIAdapter.probePresentAPI", "YES"]
+        app.launch()
+        var mode=app.switches["DSAPI.Enabled"].firstMatch
+        XCTAssertTrue(mode.waitForExistence(timeout: 20), "API page did not become responsive")
+        let initial=(mode.value as? String)=="1"
+        for (index,target) in [!initial,initial,!initial,initial].enumerated() {
+            mode=app.switches["DSAPI.Enabled"].firstMatch
+            XCTAssertTrue(mode.exists && mode.isHittable)
+            if ((mode.value as? String)=="1") != target { mode.tap() }
+            XCTAssertEqual(mode.value as? String,target ? "1" : "0")
+            app.buttons["DSAPI.Save"].tap()
+            let alert=app.alerts.firstMatch
+            XCTAssertTrue(alert.waitForExistence(timeout: 10), "Mode save did not finish or UI froze")
+            let ok=alert.buttons.firstMatch
+            XCTAssertTrue(ok.exists && ok.isHittable); ok.tap()
+            expectation(for: NSPredicate { _, _ in !mode.exists },evaluatedWith: app)
+            waitForExpectations(timeout: 10)
+            XCTAssertEqual(app.state,.runningForeground)
+            app.terminate(); app.launch()
+            mode=app.switches["DSAPI.Enabled"].firstMatch
+            XCTAssertTrue(mode.waitForExistence(timeout: 20), "Relaunch froze after switching service")
+            XCTAssertEqual(mode.value as? String,target ? "1" : "0", "Saved mode did not survive restart")
+            capture(app,"service-switch-\(index)-\(target ? "api" : "original")")
+            print("DSAPI_SWITCH_CYCLE=\(index),api=\(target),responsive=true")
         }
-        return false
+        app.buttons["DSAPI.Cancel"].tap()
+        app.terminate()
+        #endif
+    }
+
+    private func openOriginalSettings(_ app: XCUIApplication) -> Bool {
+        if app.buttons["DSAPI.APISettings"].firstMatch.exists { return true }
+        let sidebar=app.buttons["open_sidebar"].firstMatch
+        if sidebar.exists && sidebar.isHittable { sidebar.tap() }
+        capture(app,"original-sidebar-account-retained")
+        let avatar=app.images["sidebar/userAvatar"].firstMatch
+        if avatar.exists && avatar.isHittable { avatar.tap() }
+        else {
+            let entry=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@ OR label == %@","My Profile","Settings","我的资料","设置")).firstMatch
+            if entry.exists && entry.isHittable { entry.tap() }
+            else { app.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.94)).tap() }
+        }
+        let profile=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","My Profile","Settings","设置")).firstMatch
+        if !app.buttons["DSAPI.APISettings"].firstMatch.exists && profile.exists && profile.isHittable { profile.tap() }
+        return app.buttons["DSAPI.APISettings"].firstMatch.waitForExistence(timeout:10)
+    }
+
+    private func inspectSettings(_ app: XCUIApplication) -> Bool {
+        guard openOriginalSettings(app) else {
+            print("DSAPI_SETTINGS_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_SETTINGS_FAILURE_END")
+            return false
+        }
+        let account=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","Account settings","账号管理","帳號管理")).firstMatch
+        XCTAssertTrue(account.exists,"Original account settings must remain")
+        for labels in [["Data controls","数据管理"],["Help & Feedback","帮助与反馈"],["Service agreement","服务协议"],["Log out","退出登录"]] {
+            let row=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@",labels[0],labels[1])).firstMatch
+            XCTAssertTrue(row.exists,"Original setting removed: \(labels[0])")
+        }
+        capture(app,"original-settings-account-retained")
+        inspectNativePreferences(app)
+        let api=app.buttons["DSAPI.APISettings"].firstMatch
+        XCTAssertTrue(api.exists && api.isHittable); api.tap()
+        XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:5))
+        XCTAssertTrue(app.textFields["Base URL"].exists)
+        XCTAssertTrue(app.secureTextFields["API Key"].exists)
+        app.swipeUp()
+        let usageOption=app.switches["DSAPI.RequestUsage"].firstMatch
+        XCTAssertTrue(usageOption.exists && usageOption.isHittable)
+        if usageOption.exists && usageOption.isHittable {
+            let previous=usageOption.value as? String; usageOption.tap()
+            XCTAssertNotEqual(usageOption.value as? String,previous); usageOption.tap()
+        }
+        let usage=app.cells["DSAPI.Usage"].firstMatch
+        if !usage.isHittable { app.swipeUp() }
+        XCTAssertTrue(usage.exists && usage.isHittable); usage.tap()
+        capture(app,"api-usage-dashboard")
+        let close=app.buttons["DSAPI.CloseUsage"].firstMatch
+        XCTAssertTrue(close.waitForExistence(timeout:5)); close.tap()
+        capture(app,"api-settings")
+        return true
     }
 
     private func inspectNativePreferences(_ app: XCUIApplication) {
-        let voice = app.cells["DSAPI.VoicePicker"].firstMatch
+        let voice = app.cells.containing(.staticText,identifier:"Voice").firstMatch
         XCTAssertTrue(voice.exists && voice.isHittable, "Native voice setting must be reachable")
         if voice.exists && voice.isHittable {
             voice.tap()
@@ -294,17 +324,11 @@ final class CaptureTests: XCTestCase {
                 app.terminate()
                 app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
                 app.launch()
-                let sidebar = app.buttons["open_sidebar"].firstMatch
-                if sidebar.waitForExistence(timeout: 10) { sidebar.tap() }
-                let settings = app.buttons["DSAPI.SettingsEntry"].firstMatch
-                XCTAssertEqual(settings.label, "设置", "Sidebar settings label did not retain app language")
+                XCTAssertTrue(openOriginalSettings(app),"Original account footer must still open settings after language switch")
                 capture(app, "sidebar-after-language-change")
-                if settings.exists && settings.isHittable { settings.tap() }
                 XCTAssertTrue(app.staticTexts["语言"].firstMatch.waitForExistence(timeout: 5), "Original settings did not switch to Chinese")
-                XCTAssertTrue(app.staticTexts["用量统计"].firstMatch.exists, "Usage entry did not follow app language")
-                for forbidden in ["账号管理", "退出登录", "服务协议", "帮助与反馈"] {
-                    XCTAssertFalse(app.staticTexts[forbidden].firstMatch.exists, "Removed item returned after changing language: \(forbidden)")
-                }
+                XCTAssertTrue(app.staticTexts["数据管理"].firstMatch.exists,"Original data setting must remain after language switch")
+                XCTAssertTrue(app.staticTexts["账号管理"].firstMatch.exists,"Original account setting must remain after language switch")
                 capture(app, "settings-after-language-change")
             } else {
                 backFromNativePreference(app)

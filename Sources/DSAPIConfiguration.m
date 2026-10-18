@@ -12,6 +12,9 @@ static NSError *DSConfigError(NSString *description) {
     return [NSError errorWithDomain:@"DSAPI.Configuration" code:1
         userInfo:@{NSLocalizedDescriptionKey:description}];
 }
+@interface DSAPIConfiguration ()
+- (BOOL)saveKeyData:(NSData *)data error:(NSError **)error;
+@end
 @implementation DSAPIConfiguration
 - (instancetype)init { if ((self=[super init])) _requestUsage=YES; return self; }
 + (instancetype)loadConfiguration {
@@ -54,7 +57,13 @@ static NSError *DSConfigError(NSString *description) {
         if (error) *error = DSConfigError(DSAPILocalized(@"invalidFields"));
         return NO;
     }
-    NSData *keyData = [self.apiKey dataUsingEncoding:NSUTF8StringEncoding];
+    if (![self saveKeyData:[self.apiKey dataUsingEncoding:NSUTF8StringEncoding] error:error]) return NO;
+    [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,
+        @"model":self.model, @"reasoningModel":self.reasoningModel ?: @"",
+        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout), @"requestUsage":@(self.requestUsage), @"enabled":@(self.enabled) } forKey:DSConfigKey];
+    return YES;
+}
+- (BOOL)saveKeyData:(NSData *)keyData error:(NSError **)error {
     NSDictionary *query = DSKeyQuery();
     OSStatus status;
     if (!keyData.length) {
@@ -74,9 +83,6 @@ static NSError *DSConfigError(NSString *description) {
             userInfo:@{NSLocalizedDescriptionKey:DSAPILocalized(@"keychainError")}];
         return NO;
     }
-    [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,
-        @"model":self.model, @"reasoningModel":self.reasoningModel ?: @"",
-        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout), @"requestUsage":@(self.requestUsage), @"enabled":@(self.enabled) } forKey:DSConfigKey];
     return YES;
 }
 @end
