@@ -281,6 +281,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         (!prompt && ![path hasSuffix:@"/chat/continue"] && [parentMessage[@"role"] isEqual:@"ASSISTANT"]);
     if (retry) {
         NSNumber *target=parent ?: ([p[@"message_id"] isKindOfClass:NSNumber.class] ? p[@"message_id"] : nil);
+        if (!target && [p[@"child_message_id"] isKindOfClass:NSNumber.class]) target=p[@"child_message_id"];
         NSDictionary *selected=target ? [DSLocalStore.shared message:target session:sid] : nil;
         if ([selected[@"role"] isEqual:@"ASSISTANT"]) target=[selected[@"parent_id"] isKindOfClass:NSNumber.class] ? selected[@"parent_id"] : nil;
         NSDictionary *question=target ? [DSLocalStore.shared message:target session:sid] : nil;

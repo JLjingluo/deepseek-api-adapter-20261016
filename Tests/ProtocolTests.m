@@ -115,6 +115,10 @@ int main(void) {
             check([replacement[@"parent_id"] isEqual:question],@"regenerated answer is a sibling under the original question");
             assistant=replacement[@"message_id"];
         }
+        Capture *nativeRetry=request(@"/chat/regenerate",@{@"chat_session_id":sid,@"child_message_id":assistant,@"thinking_enabled":@NO,@"search_enabled":@NO});
+        check(!nativeRetry.error,@"native child_message_id regeneration completes");
+        check([retryPayload[@"messages"] count]==1 && [retryPayload[@"messages"][0][@"role"] isEqual:@"user"],@"native regeneration excludes the replaced answer");
+        check([[[DSLocalStore.shared messages:sid].lastObject objectForKey:@"parent_id"] isEqual:question],@"native regeneration keeps the original question as parent");
         NSInteger userCount=0; for (NSDictionary *message in [DSLocalStore.shared messages:sid]) if ([message[@"role"] isEqual:@"USER"]) userCount++;
         check(userCount==1,@"regeneration never creates another copy of the user question");
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
