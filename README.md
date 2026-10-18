@@ -1,37 +1,13 @@
-# DeepSeek 2.6.2 — optional API chat
+# DeepSeek 2.6.2 — optional API chat, test 1
 
-This integration retains the supplied original application's sign-in, account footer,
-account management and settings. It adds an **API Settings** row inside the original Settings list, using the original
-settings cell class and typography. API mode is **off by default**; original login and chat continue using
-the original service. Enabling API chat requires saving the configuration and restarting
-the app. The existing sign-in flow is retained in both modes.
+This is a complete unsigned test IPA based on the supplied original application. Original login, account footer, settings and chat UI remain. A native **API Settings** row is added to the original account/settings group. A local Guest option skips login without authenticating an official account.
 
-API settings support HTTPS Base URL, API Key, model, optional reasoning model, system
-prompt, timeout, token-usage requests and a usage dashboard. API keys use the device-only
-Keychain. API replies are stored locally. Signed-in account history is read from the original
-service and cached with account isolation; it can be continued through API. API replies
-are not uploaded to the original cloud.
-Switching back to original mode also requires restarting.
+API settings support provider presets without keys, HTTPS Base URL, manually entered Keychain API Key, automatic `/models` discovery and manual models, optional thinking model, reasoning effort, system prompt, timeout and usage tracking. An optional setting shows an API shortcut in the conversation sidebar. A clean install defaults to original-service mode. Save and restart after changing modes.
 
-The current replacement under development also adds an explicitly local Guest profile with a sign-in/API
-prompt (it does not authenticate an official account), an optional conversation-list API entry, provider presets without keys, automatic
-model discovery plus manual model names, and provider-specific reasoning effort.
+With valid original-account login, API mode imports and caches cloud conversations with account isolation. Old conversations can be continued through API; refresh preserves those local turns. API-generated replies remain on the device and are **not uploaded to the official cloud**. An API key alone cannot retrieve account history.
 
-API mode intercepts chat, chat sessions, file uploads and the corresponding guest challenge routes. Login,
-account operations, original settings and bootstrap requests pass through to the original
-service. Original mode keeps the original URLSession configuration and proof-of-work
-implementation. No account modules, footer rows, settings rows or existing navigation
-items are removed. The original data-management, agreement, help, logout and update
-entries remain unchanged; API usage is inside the added API page.
+The current package passed the nine-case native suite, the documented Guest restart/sign-in flow and a real official DeepSeek native-image request (HTTP 200). The six component suites include late identity loading, token rotation and cross-account rejection. Tests do not establish real-account or physical-iPhone acceptance. See [ACCEPTANCE.md](ACCEPTANCE.md) for exact scope and limitations.
 
-This is an unsigned **test IPA**, not a claim of 100% UI/feature equivalence or physical
-iPhone acceptance. Native API image sending has passed against the official provider. API mode does not fully implement every attachment type, original search,
-cloud sharing, voice input, automatic reading or widgets. Manual API-message reading
-uses Apple voices; native start/stop and voice-preview regression has passed in the simulator. Those limitations
-apply to API mode; original mode routes to the original services.
+API image and UTF-8 text attachments are supported; all original attachment types are not. Original search, cloud sharing, voice input, automatic reading and widgets are not fully adapted in API mode. Manual API reading uses Apple system voices. Original mode retains its original service routes. **100% UI/feature equivalence and a bug-free application are not claimed.**
 
-**Candidate 35 is withdrawn from acceptance:** service switching and unauthenticated image uploads were reported. A replacement is under native image and full regression testing; no new candidate is accepted for delivery yet.
-
-See [ACCEPTANCE.md](ACCEPTANCE.md) for test scope. The repository contains adapter source,
-not the supplied original app or credentials. GitHub Actions compiles an arm64 library
-and repackages an exact-hash encrypted input while checking original resource preservation.
+The IPA requires your own signing. Do not uninstall or clear app data to troubleshoot synchronization: local API replies need a separate backup. The repository contains adapter source, not the original application's source or credentials. GitHub Actions builds arm64 and verifies preserved original resources/TEXT against the exact encrypted input.

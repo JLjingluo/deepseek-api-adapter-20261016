@@ -1,27 +1,31 @@
-# Optional API mode — acceptance status
+# DeepSeek 2.6.2 API — 测试版 1 验收记录
 
-Original login, account footer and original settings entries are retained. API chat is optional and off by default. Save a mode change and restart before sending.
+本包是完整未签名 IPA，基于提供的原应用加入可选 API 模式。它是测试版本，不能据此声称全部 UI 和功能已 100% 等价或没有任何缺陷。
 
-## Component and official-provider checks
+## 已通过的验证
 
-Candidate 48, source `2a2f7a29d5a1c2cf0bad3a02a5cd475dbffe5962`, passes six component suites: streaming/configuration, local history, attachments, protocol routing, real Foundation upload-task variants, and the OpenAI-compatible client. The protocol suite also verifies API-disabled local Guest blocking. ARM64 compilation, original resource/TEXT preservation, ZIP integrity and a scan for real credentials/test keys pass.
+- 当前整包原生回归 9/9：API 设置、流式对话、图片、取消、朗读、重新生成、四次服务切换、原设置、历史续聊。
+- 当前整包访客流程：未启用 API 时提示登录/使用 API，进入设置启用、重启并确认原版欢迎页、正常回复，再返回原版登录页。
+- 当前整包官方 DeepSeek 图片实测：原生选择合成红色图片，官方 `deepseek-chat` 返回 HTTP 200，应用正确显示结果。本次报告 1,015 tokens。临时 CI 密钥已删除。
+- 历史专项：显示旧提问/回答，向 API 发送旧提问、旧回答、新提问三条上下文，重启并刷新后保留本机 API 新回复。
+- 六类组件测试通过；补测账号信息晚于列表加载、令牌更新、缓存归属衔接、其他账号访问拒绝。
+- 原设置保留账号、数据、协议、帮助、退出登录等入口；验证字体、个性化设置保存、音色选择/试听、语言重启和 API 配置。语言通过隔离测试环境的系统语言覆盖验证，未验证实体手机里的系统设置操作。
+- 包 CRC、原资源/TEXT 保留和密钥扫描通过。IPA 不含提供的 GitHub 令牌、测试 API Key 或测试用的 dummy key。
 
-Official DeepSeek production-client tests passed eight cases: Unicode, thinking, conversation context, cancellation, wrong key, wrong model, Max reasoning and model discovery. These eight requests reported 177 tokens in total.
+## 历史与使用边界
 
-Packaged candidate 48 passed native live-image probe 51. A synthetic red square was attached through the original UI, uploaded through the adapter, sent to official DeepSeek (`deepseek-chat`, HTTP 200), and the expected reply was rendered. Reported usage was 1,015 tokens. No user screenshot was submitted. The decode failure was caused by a JSON number in a strict Boolean field; `is_image` now serializes as a Boolean. The temporary provider CI secret was removed after the test.
+原云端历史需要保留原账号有效登录。API Key 不能代替原账号登录。API 续聊仅存本机，不反向上传官方云端，也不会自动出现在其他设备。旧云端附件未在本机保存内容时可能需要重新添加。
 
-## Native simulator checks
+API 模式支持 PNG/JPEG/GIF/WebP 和 UTF-8 文本附件；并非所有原版文件类型。原版联网搜索、云分享、语音输入、自动朗读和组件没有完成全面 API 适配。手动 API 朗读使用 Apple 系统语音。原服务模式继续使用原后端。
 
-Earlier candidate 45 full native probe 43 passed native streaming, cancellation, regeneration, manual reading, repeated original/API mode changes and original/API settings. The original-account cloud-history fixture appeared in the native sidebar; continuation still required a test input-selector correction. Candidate 48 re-runs the complete suite, including model discovery/presets/reasoning and cloud-history continuation. Final results are pending.
+没有实体 iPhone、自签安装、真实账号登录或真实账号云端历史的验收结果。账号/云历史测试使用隔离模拟后端；真实官方 API 测试只发送了合成测试内容。
 
-Settings checks include retained account/data/legal/help/logout entries, voice selection and CAF preview, font size, personalization, language restart, API configuration and usage controls. Language restart uses a disposable locale override; actual selection inside iOS Settings is not proven.
+## 可复核结果
 
-Candidate 48 Guest probes 49/50 failed before entering the conversation UI. Candidate 49 brings the Skip control above the original welcome content and adds action diagnostics. Guest startup with API enabled/disabled, API activation/restart, and returning to original login require native acceptance.
+- [整包完整回归](https://github.com/JLjingluo/deepseek-api-adapter-20261016/actions/runs/39175996028)
+- [历史专项](https://github.com/JLjingluo/deepseek-api-adapter-20261016/actions/runs/39175994755)
+- [官方图片实测](https://github.com/JLjingluo/deepseek-api-adapter-20261016/actions/runs/39176414470)
+- 访客复测：probe 75，参见仓库 Actions。
 
-## History behavior and limits
-
-With an existing valid original-account login, API mode reads cloud conversation pages and messages through the original authenticated routes, caches them per account, and permits local API continuation. Refresh preserves local API branches. API-generated messages are not uploaded to the original cloud. An API key alone cannot access official-account history. Offline fallback uses previously cached history and reports synchronization errors. Cloud file references not present in the local attachment store remain a limitation.
-
-No physical iPhone, self-sign/install, genuine account login, device Keychain or real-account cloud history has been tested. Simulator account/backend fixtures are separate diagnostics and are not included in the delivered adapter. Original web search, cloud sharing, voice input, automatic reading and widgets are not fully adapted in API mode. Manual API reading uses Apple voices. Complete original UI/function equivalence is not established.
-
-No new replacement IPA is accepted for delivery until the pending native regressions are resolved.
+构建源码：`60ba38a521bfb0e0ced319e5a2156837ff6bf97f`。
+IPA SHA-256：`feeaf96ab8da847b3055c9b39f03a84420905826d4133ed91ed03cebbaeafb60`。
