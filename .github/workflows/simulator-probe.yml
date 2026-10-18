@@ -14,6 +14,11 @@ on:
         description: Optional candidate-N release; use its compiled adapter instead of rebuilding it
         type: string
         default: ''
+      test_focus:
+        description: Run the complete native suite or focus on settings
+        type: choice
+        options: [all, settings]
+        default: all
 permissions:
   contents: write
 jobs:
@@ -58,6 +63,7 @@ jobs:
           PROBE_ADAPTER: ${{ inputs.adapter }}
           PROBE_MOCK_API: ${{ inputs.mock_api }}
           PROBE_PACKAGED_ADAPTER: ${{ inputs.candidate_tag != '' }}
+          PROBE_UI_TEST_FOCUS: ${{ inputs.test_focus }}
         run: python3 ci_probe_simulator.py original.ipa
       - name: Upload bounded diagnostics only
         if: always()

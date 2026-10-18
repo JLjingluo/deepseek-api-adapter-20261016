@@ -171,9 +171,13 @@ def collect_ui_observations(device):
     from ci_ui_probe import create_project
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
+    focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
+    if focus not in ('', 'all', 'settings'):
+        raise RuntimeError('Unknown native test focus')
+    target = 'NativeUIProbeUITests/CaptureTests' + ('/testNativeSettings' if focus == 'settings' else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
-        '-resultBundlePath', str(results), '-only-testing:NativeUIProbeUITests/CaptureTests',
+        '-resultBundlePath', str(results), '-only-testing:'+target,
         'test']
     conditions=[]
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
@@ -188,8 +192,8 @@ def collect_ui_observations(device):
         report['ui_test_timed_out']=True
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
     report['ui_test_exit_code'] = outcome.returncode
-    report['ui_test_scope'] = ('startup, local API request/render assertion and optional settings navigation'
-        if report.get('mock_api_base_url') else 'startup and optional settings navigation')
+    report['ui_test_scope'] = ('native settings only' if focus == 'settings' else
+        ('native streaming, cancellation, read-aloud and settings' if report.get('mock_api_base_url') else 'startup and settings'))
     if results.exists():
         exported = run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(results),
             '--output-path', str(diagnostics/'UIAttachments')], timeout=90, check=False)
