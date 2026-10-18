@@ -196,6 +196,9 @@ def collect_ui_observations(device):
         report['ui_test_timed_out']=True
         capture_startup_threads()
     (diagnostics/'ui-test.log').write_text(outcome.stdout[-128000:])
+    highlights=[line[:1500] for line in outcome.stdout.splitlines() if any(marker in line for marker in
+        ('Test Case ', ' error: ', 'DSAPI_FONT_CHANGE=', 'DSAPI_READ_ALOUD_LABEL=', 'DSAPI_API_SETTINGS_VISITED='))]
+    (diagnostics/'ui-case-summary.log').write_text('\n'.join(highlights)[-48000:])
     report['ui_test_exit_code'] = outcome.returncode
     report['ui_test_scope'] = ('native '+focus+' only' if selected else
         ('native streaming, cancellation, read-aloud and settings' if report.get('mock_api_base_url') else 'startup and settings'))

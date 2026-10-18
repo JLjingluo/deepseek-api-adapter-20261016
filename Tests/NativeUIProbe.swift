@@ -185,7 +185,8 @@ final class CaptureTests: XCTestCase {
             let directSettings = app.buttons["DSAPI.SettingsEntry"].firstMatch
             XCTAssertTrue(directSettings.exists && directSettings.isHittable, "Sidebar footer must be a Settings entry")
             XCTAssertFalse(directSettings.label.localizedCaseInsensitiveContains("profile"))
-            XCTAssertFalse(app.images["sidebar/userAvatar"].firstMatch.isHittable, "Account avatar must be removed")
+            let avatar=app.images["sidebar/userAvatar"].firstMatch
+            XCTAssertFalse(avatar.exists && avatar.isHittable, "Account avatar must be removed")
             #endif
             let settings = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS %@", "setting", "profile", "设置")).firstMatch
             if settings.exists && settings.isHittable {
@@ -277,19 +278,13 @@ final class CaptureTests: XCTestCase {
                 expectedValue = toggle.value as? String
             }
             if names[0] == "Language" {
-                let chineseNames = ["简体中文", "中文（简体）", "Chinese, Simplified", "Chinese (Simplified)", "Simplified Chinese"]
-                let chinese = chineseNames.map { app.staticTexts[$0].firstMatch }.first { $0.exists && $0.isHittable }
-                XCTAssertNotNil(chinese, "Native Simplified Chinese language option is missing")
-                chinese?.tap()
-                Thread.sleep(forTimeInterval: 2)
-                capture(app, "settings-after-language-change")
-                print("DSAPI_LANGUAGE_CHANGED_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_LANGUAGE_CHANGED_END")
-                XCTAssertTrue(app.staticTexts["语言"].firstMatch.exists, "Original settings did not switch to Chinese")
-                XCTAssertTrue(app.staticTexts["用量统计"].firstMatch.exists, "Usage entry did not follow app language")
-                for forbidden in ["账号管理", "退出登录", "服务协议", "帮助与反馈"] {
-                    XCTAssertFalse(app.staticTexts[forbidden].firstMatch.isHittable, "Removed item returned after changing language: \(forbidden)")
-                }
+                let preferences=XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+                XCTAssertTrue(preferences.wait(for: .runningForeground, timeout: 10), "Original language entry must open iOS app settings")
+                capture(preferences, "original-system-language-entry")
+                // Exercise the same iOS language preference at next launch. The
+                // original app delegates language selection to system Settings.
                 app.terminate()
+                app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
                 app.launch()
                 let sidebar = app.buttons["open_sidebar"].firstMatch
                 if sidebar.waitForExistence(timeout: 10) { sidebar.tap() }
@@ -297,6 +292,12 @@ final class CaptureTests: XCTestCase {
                 XCTAssertEqual(settings.label, "设置", "Sidebar settings label did not retain app language")
                 capture(app, "sidebar-after-language-change")
                 if settings.exists && settings.isHittable { settings.tap() }
+                XCTAssertTrue(app.staticTexts["语言"].firstMatch.waitForExistence(timeout: 5), "Original settings did not switch to Chinese")
+                XCTAssertTrue(app.staticTexts["用量统计"].firstMatch.exists, "Usage entry did not follow app language")
+                for forbidden in ["账号管理", "退出登录", "服务协议", "帮助与反馈"] {
+                    XCTAssertFalse(app.staticTexts[forbidden].firstMatch.exists, "Removed item returned after changing language: \(forbidden)")
+                }
+                capture(app, "settings-after-language-change")
             } else {
                 backFromNativePreference(app)
                 if let expected = expectedValue {

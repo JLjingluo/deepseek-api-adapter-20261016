@@ -275,6 +275,18 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     NSNumber *parent = [p[@"parent_message_id"] isKindOfClass:NSNumber.class] ? p[@"parent_message_id"] : nil;
     NSString *prompt = [p[@"prompt"] isKindOfClass:NSString.class] ? p[@"prompt"] : nil;
+    NSString *path=self.request.URL.path;
+    NSDictionary *parentMessage=parent ? [DSLocalStore.shared message:parent session:sid] : nil;
+    BOOL retry=[path hasSuffix:@"/chat/regenerate"] || [p[@"action"] isEqual:@"retry"] ||
+        (!prompt && ![path hasSuffix:@"/chat/continue"] && [parentMessage[@"role"] isEqual:@"ASSISTANT"]);
+    if (retry) {
+        NSNumber *target=parent ?: ([p[@"message_id"] isKindOfClass:NSNumber.class] ? p[@"message_id"] : nil);
+        NSDictionary *selected=target ? [DSLocalStore.shared message:target session:sid] : nil;
+        if ([selected[@"role"] isEqual:@"ASSISTANT"]) target=[selected[@"parent_id"] isKindOfClass:NSNumber.class] ? selected[@"parent_id"] : nil;
+        NSDictionary *question=target ? [DSLocalStore.shared message:target session:sid] : nil;
+        if (![question[@"role"] isEqual:@"USER"]) { [self fail:@"待重新生成的原问题不存在。"]; return; }
+        parent=target; prompt=nil;
+    }
     if (!parent && [p[@"message_id"] isKindOfClass:NSNumber.class]) {
         NSDictionary *selected = [DSLocalStore.shared message:p[@"message_id"] session:sid];
         if (!selected) { [self fail:@"待重试或编辑的消息不存在。"]; return; }

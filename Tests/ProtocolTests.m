@@ -1,6 +1,48 @@
 #import <Foundation/Foundation.h>
 #import "DSCompatibilityProtocol.h"
 #import "DSLocalStore.h"
+#import "DSAPIConfiguration.h"
+#import <objc/runtime.h>
+static NSDictionary *retryPayload;
+@interface RetryFixture : NSURLProtocol
+@end
+@implementation RetryFixture
++ (BOOL)canInitWithRequest:(NSURLRequest *)request { return [request.URL.host isEqual:@"api.fixture.test"]; }
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
+- (void)stopLoading {}
+- (void)startLoading {
+    NSData *body=self.request.HTTPBody;
+    if (!body && self.request.HTTPBodyStream) {
+        NSInputStream *stream=self.request.HTTPBodyStream; [stream open];
+        NSMutableData *bytes=[NSMutableData data]; uint8_t buffer[1024]; NSInteger length;
+        while ((length=[stream read:buffer maxLength:sizeof(buffer)])>0) [bytes appendBytes:buffer length:length];
+        [stream close]; body=bytes;
+    }
+    retryPayload=body ? [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL] : nil;
+    NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":@"text/event-stream"}];
+    [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+    NSData *wire=[@"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"replacement\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n" dataUsingEncoding:NSUTF8StringEncoding];
+    [self.client URLProtocol:self didLoadData:wire]; [self.client URLProtocolDidFinishLoading:self];
+}
+@end
+@interface DSAPIConfiguration (RetryFixture)
++ (instancetype)retryConfiguration;
+@end
+@implementation DSAPIConfiguration (RetryFixture)
++ (instancetype)retryConfiguration {
+    DSAPIConfiguration *c=[self new]; c.baseURL=@"https://api.fixture.test/v1"; c.apiKey=@"protocol-fixture-key";
+    c.model=@"fixture-model"; c.reasoningModel=@""; c.systemPrompt=@""; c.timeout=30; return c;
+}
+@end
+@interface NSURLSession (RetryFixture)
++ (NSURLSession *)retrySession:(NSURLSessionConfiguration *)config delegate:(id<NSURLSessionDelegate>)delegate queue:(NSOperationQueue *)queue;
+@end
+@implementation NSURLSession (RetryFixture)
++ (NSURLSession *)retrySession:(NSURLSessionConfiguration *)config delegate:(id<NSURLSessionDelegate>)delegate queue:(NSOperationQueue *)queue {
+    NSURLSessionConfiguration *copy=[config copy]; copy.protocolClasses=@[RetryFixture.class];
+    return [self retrySession:copy delegate:delegate queue:queue];
+}
+@end
 @interface Capture : NSObject <NSURLProtocolClient>
 @property(nonatomic, strong) NSMutableData *bytes;
 @property(nonatomic, strong) NSError *error;
@@ -62,6 +104,19 @@ int main(void) {
         check([settings[@"settings"] isKindOfClass:NSDictionary.class],@"native settings collection is a map");
         check(request(@"/users/login",@{}).error!=nil,@"original login never falls back to remote service");
         check(request(@"/unsupported",@{}).error!=nil,@"unknown route fails instead of forwarding");
+        method_exchangeImplementations(class_getClassMethod(DSAPIConfiguration.class,@selector(loadConfiguration)),class_getClassMethod(DSAPIConfiguration.class,@selector(retryConfiguration)));
+        method_exchangeImplementations(class_getClassMethod(NSURLSession.class,@selector(sessionWithConfiguration:delegate:delegateQueue:)),class_getClassMethod(NSURLSession.class,@selector(retrySession:delegate:queue:)));
+        NSNumber *question=history[@"chat_messages"][0][@"message_id"];
+        for (NSString *route in @[@"/chat/regenerate",@"/chat/completion"]) {
+            Capture *retry=request(route,@{@"chat_session_id":sid,@"parent_message_id":assistant,@"action":@"retry",@"prompt":@""});
+            check(!retry.error,@"original retry route completes as native SSE");
+            check([retryPayload[@"messages"] count]==1 && [retryPayload[@"messages"][0][@"role"] isEqual:@"user"] && [retryPayload[@"messages"][0][@"content"] isEqual:@"你好"],@"retry sends original question without previous answer or duplicate prompt");
+            NSDictionary *replacement=DSLocalStore.shared.sessions.count ? [DSLocalStore.shared messages:sid].lastObject : nil;
+            check([replacement[@"parent_id"] isEqual:question],@"regenerated answer is a sibling under the original question");
+            assistant=replacement[@"message_id"];
+        }
+        NSInteger userCount=0; for (NSDictionary *message in [DSLocalStore.shared messages:sid]) if ([message[@"role"] isEqual:@"USER"]) userCount++;
+        check(userCount==1,@"regeneration never creates another copy of the user question");
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==0,@"delete updates native inventory");
         puts("PASS: native URLProtocol CRUD, envelopes, required status, local-only login rejection, unknown-route rejection");

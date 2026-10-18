@@ -1,7 +1,17 @@
 #import "DSAPILocalization.h"
 static NSString *const DSLanguageKey=@"DSAPIAdapter.nativeLanguage";
+static NSString *DSCurrentLanguage(void) {
+    NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+    NSString *preferred=NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en";
+    NSString *previous=[defaults stringForKey:@"DSAPIAdapter.preferredLanguage"];
+    if (![preferred isEqual:previous]) {
+        [defaults setObject:preferred forKey:@"DSAPIAdapter.preferredLanguage"];
+        [defaults removeObjectForKey:DSLanguageKey];
+    }
+    return [defaults stringForKey:DSLanguageKey] ?: preferred;
+}
 static NSBundle *DSLanguageBundle(void) {
-    NSString *language=[NSUserDefaults.standardUserDefaults stringForKey:DSLanguageKey] ?: NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en";
+    NSString *language=DSCurrentLanguage();
     NSString *path=[NSBundle.mainBundle pathForResource:language ofType:@"lproj"];
     return path ? [NSBundle bundleWithPath:path] : NSBundle.mainBundle;
 }
@@ -62,7 +72,7 @@ NSString *DSAPILocalized(NSString *key) {
           @"usageNote":@[@"Token counts come from API usage reports. Missing usage is not estimated. This page stores no messages or API keys; it is not a billing statement.",@"Token 按 API 返回的 usage 累计；未返回的用量不会估算。本页不保存消息或密钥，也不代表服务商账单。",@"Token 依 API 回傳的 usage 累計；未回傳的用量不會估算。本頁不儲存訊息或金鑰，亦不代表服務商帳單。"]
         };
     });
-    NSString *language=[NSUserDefaults.standardUserDefaults stringForKey:DSLanguageKey] ?: NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en";
+    NSString *language=DSCurrentLanguage();
     NSUInteger index=[language hasPrefix:@"zh"] ? ([language containsString:@"Hant"] || [language containsString:@"TW"] || [language containsString:@"HK"] ? 2 : 1) : 0;
     NSArray *values=words[key];
     return values ? values[index] : key;
