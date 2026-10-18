@@ -136,7 +136,12 @@ public func leaveGuest() -> Bool {
           let current=Mirror(reflecting:subject).children.first(where:{$0.label=="currentValue"})?.value,
           let context=Mirror(reflecting:current).children.first?.value else { return false }
     guard Mirror(reflecting:context).displayStyle == .class else { return false }
-    return logout(Unmanaged.passUnretained(context as AnyObject).toOpaque())
+    let left=logout(Unmanaged.passUnretained(context as AnyObject).toOpaque())
+    if left, let navigation=guestNavigation, let login=guestLoginController {
+        navigation.setViewControllers([login],animated:true)
+        guestNavigation=nil; guestLoginController=nil
+    }
+    return left
 }
 @_cdecl("DSAPIGuestFooterLabel")
 public func guestFooterLabel(_ raw:UnsafeRawPointer?) -> UnsafeMutableRawPointer? {
@@ -161,19 +166,19 @@ public func finishGuestWelcome(_ raw:UnsafeRawPointer?) -> Bool {
     return true
 }
 
+private weak var guestNavigation: UINavigationController?
+private var guestLoginController: UIViewController?
+
 @_cdecl("DSAPIPresentGuestConversation")
 public func presentGuestConversation(_ raw:UnsafeRawPointer?) -> Bool {
-    guard let raw, let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPICreateGuestRoot") else { return false }
+    guard let raw, let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPICreateGuestSession") else { return false }
     let controller=Unmanaged<UIViewController>.fromOpaque(raw).takeUnretainedValue()
     guard let navigation=controller.navigationController else { return false }
-    let onExit: () -> Void = { [weak navigation, controller] in
-        DispatchQueue.main.async { navigation?.setViewControllers([controller],animated:true) }
-    }
-    let pair=unsafeBitCast(onExit,to:(UnsafeRawPointer,UnsafeMutableRawPointer?).self)
-    let create=unsafeBitCast(symbol,to:(@convention(c)(UnsafeRawPointer?,UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?).self)
-    guard let result=create(pair.0,pair.1) else { return false }
-    let root=Unmanaged<UIViewController>.fromOpaque(result).takeRetainedValue()
-    navigation.setViewControllers([root],animated:true)
-    UserDefaults.standard.set("Original conversation root installed",forKey:"DSAPIAdapter.guestActivationStatus")
+    let create=unsafeBitCast(symbol,to:(@convention(c)() -> UnsafeMutableRawPointer?).self)
+    guard let result=create() else { return false }
+    let session=Unmanaged<UIViewController>.fromOpaque(result).takeRetainedValue()
+    guestNavigation=navigation; guestLoginController=controller
+    navigation.setViewControllers([session],animated:true)
+    UserDefaults.standard.set("Original conversation controller installed",forKey:"DSAPIAdapter.guestActivationStatus")
     return true
 }
