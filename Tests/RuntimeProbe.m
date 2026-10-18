@@ -22,8 +22,9 @@ static void (*oldWillThrow)(void *);
 static void (*retainSwiftError)(void *);
 static void *(*bridgeSwiftError)(void *);
 static __thread BOOL recordingSwiftError;
+static unsigned recordedSwiftErrors;
 static void probeWillThrow(void *raw) {
-    if (!recordingSwiftError && raw && [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.lastAttachmentImport"]) {
+    if (__atomic_load_n(&recordedSwiftErrors,__ATOMIC_RELAXED)<40 && !recordingSwiftError && raw && [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.lastAttachmentImport"]) {
         recordingSwiftError=YES;
         @try {
             retainSwiftError(raw);
@@ -32,13 +33,14 @@ static void probeWillThrow(void *raw) {
             if (detail.length>1800) detail=[detail substringToIndex:1800];
             @synchronized(NSUserDefaults.class) {
                 NSMutableArray *errors=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.probeSwiftUploadErrors"] mutableCopy] ?: [NSMutableArray array];
-                if (errors.count<40) { [errors addObject:@{@"domain":error.domain ?: @"",@"code":@(error.code),@"description":detail}]; [NSUserDefaults.standardUserDefaults setObject:errors forKey:@"DSAPIAdapter.probeSwiftUploadErrors"]; }
+                if (errors.count<40) { __atomic_fetch_add(&recordedSwiftErrors,1,__ATOMIC_RELAXED); [errors addObject:@{@"domain":error.domain ?: @"",@"code":@(error.code),@"description":detail}]; [NSUserDefaults.standardUserDefaults setObject:errors forKey:@"DSAPIAdapter.probeSwiftUploadErrors"]; }
             }
         } @finally { recordingSwiftError=NO; }
     }
     if (oldWillThrow) oldWillThrow(raw);
 }
 static void installSwiftErrorProbe(void) {
+    recordedSwiftErrors=(unsigned)[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.probeSwiftUploadErrors"] count];
     void **slot=dlsym(RTLD_DEFAULT,"_swift_willThrow");
     retainSwiftError=dlsym(RTLD_DEFAULT,"swift_errorRetain"); bridgeSwiftError=dlsym(RTLD_DEFAULT,"_swift_stdlib_bridgeErrorToNSError");
     if (slot && retainSwiftError && bridgeSwiftError) {

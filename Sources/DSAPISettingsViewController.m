@@ -6,6 +6,7 @@
 @property(nonatomic,copy) NSArray<NSString *> *models;
 @property(nonatomic,copy) NSArray<NSString *> *filtered;
 @property(nonatomic,copy) NSString *selected;
+@property(nonatomic,strong) UIFont *bodyFont;
 @property(nonatomic,copy) void (^onSelect)(NSString *);
 @end
 @implementation DSAPIModelPicker
@@ -25,7 +26,7 @@
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return self.filtered.count; }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:@"model"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"model"];
-    cell.textLabel.text=self.filtered[path.row]; cell.textLabel.numberOfLines=2;
+    cell.textLabel.text=self.filtered[path.row]; cell.textLabel.numberOfLines=2; cell.textLabel.font=self.bodyFont ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     cell.accessoryType=[cell.textLabel.text isEqual:self.selected] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone; return cell;
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)path {
@@ -92,7 +93,7 @@
             self.configuration.apiKey=sameProvider ? loaded.apiKey : @""; self.fields[1].text=self.configuration.apiKey;
             self.fields[1].enabled=YES;
             if (!self.saving) self.navigationItem.rightBarButtonItem.enabled=YES;
-            if (self.configuration.automaticModels && loaded.apiKey.length) [self fetchModelsShowingPicker:NO];
+            if (self.configuration.automaticModels && self.fields[1].text.length) [self fetchModelsShowingPicker:NO];
         });
     });
 }
@@ -180,7 +181,7 @@
     }]]; [self presentChoices:alert cell:cell];
 }
 - (void)showModelPicker {
-    DSAPIModelPicker *picker=[[DSAPIModelPicker alloc] initWithStyle:UITableViewStyleInsetGrouped]; picker.models=self.modelIDs; picker.selected=self.fields[2].text;
+    DSAPIModelPicker *picker=[[DSAPIModelPicker alloc] initWithStyle:UITableViewStyleInsetGrouped]; picker.models=self.modelIDs; picker.selected=self.fields[2].text; picker.bodyFont=self.bodyFont;
     __weak typeof(self) weakSelf=self; picker.onSelect=^(NSString *name) { weakSelf.fields[2].text=name; };
     [self.navigationController pushViewController:picker animated:YES];
 }

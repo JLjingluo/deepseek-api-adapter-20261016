@@ -144,3 +144,8 @@ BOOL DSAPIHasPendingModeChange(void) {
     BOOL desired=[[NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey][@"enabled"] boolValue];
     return desired!=DSAPIIsEnabled();
 }
+
+BOOL DSAPIIsLocalGuest(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.localGuestActive"]; }
+void DSAPIRequestGuestSignIn(void) {
+    [NSNotificationCenter.defaultCenter postNotificationName:@"DSAPIAdapter.GuestSignInRequired" object:nil];
+}

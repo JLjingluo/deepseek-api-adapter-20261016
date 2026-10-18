@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // Runtime lookup lets the installed application's own Decodable conformance
 // validate the local identity. No original application source is linked here.
@@ -97,16 +98,57 @@ public func copySettingsBackingSource(_ raw: UnsafeRawPointer?) -> UnsafeMutable
     return Unmanaged.passRetained(backing).toOpaque()
 }
 
-// Use the original welcome action to enter the app's real guest context.
-// No synthetic identity or official account token is created.
+// A local profile uses the native User value/layout, but has no official authentication credential.
+// It exists solely to drive the original UI while offline/API mode owns routes.
 @_cdecl("DSAPIBeginGuest")
 public func beginGuest(_ raw: UnsafeRawPointer?) -> Bool {
-    guard let raw else { return false }
+    guard let type=appType("DeepSeek_Chat.AppModels.User"),
+          let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPIActivateGuestUser") else { return false }
+    let bridge=unsafeBitCast(symbol,to:(@convention(c)(UnsafeRawPointer?) -> Bool).self)
+    let data:[String:Any] = ["id":"api-guest","token":"dsapi-local-guest","email":"","mobile":"","idProfiles":[],"chat":["isMuted":0],"needBirthday":false]
+    do {
+        let value=try JSONDecoder().decode(type,from:JSONSerialization.data(withJSONObject:data))
+        func install<T>(_ user:T) -> Bool {
+            guard MemoryLayout<T>.size>64 else { return false }
+            return withUnsafePointer(to:user) { bridge(UnsafeRawPointer($0)) }
+        }
+        return _openExistential(value,do:install)
+    } catch { return false }
+}
+@_cdecl("DSAPILeaveGuest")
+public func leaveGuest() -> Bool {
+    guard let getter=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPINativeAccountManager"),
+          let leave=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPILeaveGuestContext") else { return false }
+    let get=unsafeBitCast(getter,to:(@convention(c)() -> UnsafeMutableRawPointer?).self)
+    let logout=unsafeBitCast(leave,to:(@convention(c)(UnsafeMutableRawPointer?) -> Bool).self)
+    guard let raw=get() else { return false }
+    let manager=Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    guard let published=Mirror(reflecting:manager).children.first(where:{$0.label=="_accountContext"})?.value,
+          let subject=Mirror(reflecting:published).children.first(where:{$0.label=="projectedValue"})?.value,
+          let current=Mirror(reflecting:subject).children.first(where:{$0.label=="currentValue"})?.value,
+          let context=Mirror(reflecting:current).children.first?.value else { return false }
+    guard Mirror(reflecting:context).displayStyle == .class else { return false }
+    return logout(Unmanaged.passUnretained(context as AnyObject).toOpaque())
+}
+@_cdecl("DSAPIGuestFooterLabel")
+public func guestFooterLabel(_ raw:UnsafeRawPointer?) -> UnsafeMutableRawPointer? {
+    guard let raw else { return nil }
+    let view=Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    guard let label=Mirror(reflecting:view).children.first(where:{$0.label=="nameLabel"})?.value as AnyObject? else { return nil }
+    return Unmanaged.passUnretained(label).toOpaque()
+}
+
+@_cdecl("DSAPIFinishGuestWelcome")
+public func finishGuestWelcome(_ raw:UnsafeRawPointer?) -> Bool {
+    guard let raw, let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPINativeAccountManager") else { return false }
+    let get=unsafeBitCast(symbol,to:(@convention(c)() -> UnsafeMutableRawPointer?).self)
+    guard let managerRaw=get() else { return false }
+    let manager=Unmanaged<AnyObject>.fromOpaque(managerRaw).takeUnretainedValue()
+    guard let published=Mirror(reflecting:manager).children.first(where:{$0.label=="_accountContext"})?.value,
+          let subject=Mirror(reflecting:published).children.first(where:{$0.label=="projectedValue"})?.value,
+          let current=Mirror(reflecting:subject).children.first(where:{$0.label=="currentValue"})?.value,
+          Mirror(reflecting:current).children.first != nil else { return false }
     let controller=Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
-    var mirror:Mirror?=Mirror(reflecting:controller)
-    while let current=mirror {
-        if let action=current.children.first(where:{$0.label=="onBegin"})?.value as? () -> Void { action(); return true }
-        mirror=current.superclassMirror
-    }
-    return false
+    if let action=Mirror(reflecting:controller).children.first(where:{$0.label=="onBegin"})?.value as? () -> Void { action() }
+    return true
 }

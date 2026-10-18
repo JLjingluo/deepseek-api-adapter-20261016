@@ -43,6 +43,8 @@ NSString *DSAPILocalized(NSString *key) {
     static NSDictionary *words; static dispatch_once_t once;
     dispatch_once(&once, ^{
         words=@{
+          @"guest":@[@"Guest",@"访客",@"訪客"],
+          @"signIn":@[@"Sign in",@"登录",@"登入"],
           @"historySync":@[@"Account history sync",@"原账号历史同步",@"原帳號歷史同步"],
           @"skipLogin":@[@"Skip sign in",@"跳过登录",@"跳過登入"],
           @"signInRequired":@[@"Sign in or use API",@"登录或使用 API",@"登入或使用 API"],

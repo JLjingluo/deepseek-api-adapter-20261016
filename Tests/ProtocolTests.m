@@ -118,8 +118,22 @@ static NSDictionary *payload(Capture *capture) {
 }
 int main(int argc,const char *argv[]) {
     @autoreleasepool {
-        BOOL enabled=!(argc>1 && strcmp(argv[1],"--official-mode")==0);
+        BOOL guest=argc>1 && strcmp(argv[1],"--guest-offline-mode")==0;
+        BOOL enabled=!(argc>1 && strcmp(argv[1],"--official-mode")==0) && !guest;
+        [NSUserDefaults.standardUserDefaults setBool:guest forKey:@"DSAPIAdapter.localGuestActive"];
         [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@(enabled)} forKey:@"DSAPIAdapter.configuration.v1"];
+        if (guest) {
+            __block NSUInteger notices=0;
+            id observer=[NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.GuestSignInRequired" object:nil queue:nil usingBlock:^(NSNotification *note) { notices++; }];
+            NSURLRequest *chat=[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/chat/completion"]];
+            check([DSCompatibilityProtocol canInitWithRequest:chat],@"local guest chat cannot fall through to the original service");
+            check(request(@"/chat/completion",@{@"prompt":@"guest"}).error!=nil && notices==1,@"guest without API posts sign-in/API guidance without loading a key or calling a provider");
+            NSDictionary *session=payload(request(@"/chat_session/create",@{})); check([session[@"id"] length]>0,@"guest can enter the original conversation UI before choosing a service");
+            payload(request(@"/chat_session/delete_all",@{}));
+            [NSNotificationCenter.defaultCenter removeObserver:observer];
+            [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
+            puts("PASS: offline guest local UI and sign-in/API guidance without official authentication"); return 0;
+        }
         for (NSString *path in @[@"/users/login",@"/users/current",@"/users/logout",@"/users/update_settings",@"/index/prepare",@"/client/settings"]) {
             NSURL *url=[NSURL URLWithString:[@"https://chat.deepseek.com/api/v0" stringByAppendingString:path]];
             check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:url]],@"original login/account/bootstrap/settings always pass through");

@@ -5,6 +5,9 @@
 #import "DSAPILocalization.h"
 #import "DSAPISettingsViewController.h"
 extern BOOL DSAPIBeginGuest(void *controller);
+extern BOOL DSAPILeaveGuest(void);
+extern BOOL DSAPIFinishGuestWelcome(void *controller);
+extern void *DSAPIGuestFooterLabel(void *controller);
 static UIViewController *topController(void) {
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) if ([scene isKindOfClass:UIWindowScene.class])
         for (UIWindow *window in ((UIWindowScene *)scene).windows) if (window.isKeyWindow) {
@@ -22,6 +25,9 @@ static void requireSignIn(void) {
         UIViewController *top=topController(); if (!top || [top isKindOfClass:UIAlertController.class]) return;
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"signInRequired") message:DSAPILocalized(@"signInNote") preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:DSOriginalLocalized(@"cancel") style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"signIn") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            dispatch_async(dispatch_get_main_queue(),^{ if (DSAPIIsLocalGuest()) DSAPILeaveGuest(); });
+        }]];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"useAPI") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             dispatch_async(dispatch_get_main_queue(),^{ openAPI(nil,NULL); });
         }]]; [top presentViewController:alert animated:YES completion:nil];
@@ -29,35 +35,71 @@ static void requireSignIn(void) {
 }
 @implementation DSGuestGuardProtocol
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    if (DSAPIIsEnabled() || DSAPIHasPendingModeChange() || [NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request]) return NO;
+    if ([NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request]) return NO;
+    NSString *authorization=[request valueForHTTPHeaderField:@"Authorization"] ?: @"";
+    NSString *token=[authorization.lowercaseString hasPrefix:@"bearer "] ? [authorization substringFromIndex:7] : authorization;
+    BOOL marked=[token isEqual:@"dsapi-local-guest"];
+    if (marked) return YES;
     if (![request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"]) return NO;
     NSString *path=request.URL.path;
+    if (DSAPIIsLocalGuest()) {
+        if ([token stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length && ![token isEqual:@"dsapi-local-guest"] && ![token.lowercaseString isEqual:@"bearer"]) {
+            [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"]; return NO;
+        }
+        return [path hasPrefix:@"/api/"];
+    }
+    if (DSAPIIsEnabled() || DSAPIHasPendingModeChange()) return NO;
     return [path isEqual:@"/api/v0/guest/available"] || [path hasPrefix:@"/api/v0/guest/chat/"] || [path isEqual:@"/api/v0/users/create_guest_challenge"];
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {
-    if ([self.request.URL.path hasSuffix:@"/guest/available"]) {
-        NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"code":@0,@"msg":@"",@"data":@{@"biz_code":@0,@"biz_msg":@"",@"biz_data":@{@"value":@"true",@"available":@YES}}} options:0 error:NULL];
-        NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":@"application/json"}];
-        [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-        [self.client URLProtocol:self didLoadData:body]; [self.client URLProtocolDidFinishLoading:self]; return;
+    NSString *authorization=[self.request valueForHTTPHeaderField:@"Authorization"] ?: @"";
+    if (!DSAPIIsLocalGuest() && [authorization containsString:@"dsapi-local-guest"]) {
+        [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]]; return;
     }
-    requireSignIn();
-    [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:@"DSAPI.SignInRequired" code:401 userInfo:@{NSLocalizedDescriptionKey:DSAPILocalized(@"signInNote")}]];
+    NSString *path=self.request.URL.path;
+    NSDictionary *guest=@{@"id":@"api-guest",@"token":@"dsapi-local-guest",@"email":@"",@"mobile_number":@"",@"area_code":@"",@"status":@0,@"id_profiles":@[],@"chat":@{@"is_muted":@0},@"has_legacy_chat_history":@NO,@"need_birthday":@NO,@"is_mainland":@NO};
+    id payload=@{};
+    if ([path hasSuffix:@"/guest/available"]) payload=@{@"value":@"true",@"available":@YES};
+    else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/users/current"]) { NSMutableDictionary *user=[guest mutableCopy]; user[@"user"]=guest; payload=user; }
+    else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/index/prepare"]) {
+        id store=[NSClassFromString(@"DSLocalStore") performSelector:NSSelectorFromString(@"shared")];
+        NSMutableArray *sessions=[NSMutableArray array];
+        for (NSDictionary *session in [store valueForKey:@"sessions"]) if (!session[@"_ds_cloud_owner"]) [sessions addObject:session];
+        payload=@{@"user":guest,@"settings":@{},@"chat_sessions":sessions};
+    } else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/client/settings"]) payload=@{@"version":@0,@"settings":@{}};
+    else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/users/auth_token/check_device"]) payload=@{@"rotate":NSNull.null};
+    else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/check_client_update"]) payload=@{@"need_update":@NO,@"force_update":@NO};
+    else if (DSAPIIsLocalGuest() && [path hasSuffix:@"/ip_to_country_code"]) payload=@{@"country_code":NSLocale.currentLocale.countryCode ?: @"US"};
+    else if (DSAPIIsLocalGuest() && ([path hasSuffix:@"/users/logout"] || [path hasSuffix:@"/users/auth_token/logout"])) {
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
+    } else if (!DSAPIIsLocalGuest() || [path hasPrefix:@"/api/v0/users/"]) {
+        requireSignIn(); [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:@"DSAPI.SignInRequired" code:401 userInfo:@{NSLocalizedDescriptionKey:DSAPILocalized(@"signInNote")}]]; return;
+    }
+    NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"code":@0,@"msg":@"",@"data":@{@"biz_code":@0,@"biz_msg":@"",@"biz_data":payload}} options:0 error:NULL];
+    NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":@"application/json"}];
+    [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; [self.client URLProtocol:self didLoadData:body]; [self.client URLProtocolDidFinishLoading:self];
 }
 - (void)stopLoading {}
 @end
 static char DSSkipButtonKey, DSSidebarAPIKey, DSBaseInsetKey;
-static void (*welcomeLoad)(id,SEL), (*loginLoad)(id,SEL), (*sidebarLayout)(id,SEL);
+static void (*welcomeLoad)(id,SEL), (*loginLoad)(id,SEL), (*sidebarLayout)(id,SEL),(*footerLayout)(id,SEL);
 static IMP replace(Class cls,SEL selector,IMP replacement) {
     Method method=class_getInstanceMethod(cls,selector); if (!method) return NULL;
     IMP old=method_getImplementation(method);
     if (!class_addMethod(cls,selector,replacement,method_getTypeEncoding(method))) class_replaceMethod(cls,selector,replacement,method_getTypeEncoding(method));
     return old;
 }
+static void finishWelcome(UIViewController *controller,NSUInteger attempt) {
+    if (!controller.view.window || ![NSStringFromClass(controller.class) containsString:@"WelcomeViewController"]) return;
+    if (DSAPIFinishGuestWelcome((__bridge void *)controller) || attempt>=80) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/10),dispatch_get_main_queue(),^{ finishWelcome(controller,attempt+1); });
+}
 static void skipLogin(id self,SEL selector) {
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.skippedLogin"];
-    if (DSAPIBeginGuest((__bridge void *)self)) return;
+    if (DSAPIBeginGuest((__bridge void *)self)) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/10),dispatch_get_main_queue(),^{ finishWelcome(self,0); }); return;
+    }
     UIViewController *controller=self;
     if (controller.navigationController.presentingViewController) [controller.navigationController dismissViewControllerAnimated:YES completion:nil];
     else if (controller.presentingViewController) [controller dismissViewControllerAnimated:YES completion:nil];
@@ -120,7 +162,17 @@ static void layoutSidebar(id self,SEL selector) {
     button.backgroundColor=footer.backgroundColor ?: controller.view.backgroundColor ?: UIColor.systemBackgroundColor;
     [controller.view bringSubviewToFront:button];
 }
+static void layoutFooter(id self,SEL selector) {
+    if (footerLayout) footerLayout(self,selector);
+    if (DSAPIIsLocalGuest()) {
+        UILabel *label=(__bridge UILabel *)DSAPIGuestFooterLabel((__bridge void *)self);
+        if (![label.text isEqual:DSAPILocalized(@"guest")]) label.text=DSAPILocalized(@"guest");
+    }
+}
 void DSInstallGuestIntegration(void) {
+    [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.GuestSignInRequired" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { requireSignIn(); }];
+    Class footerClass=NSClassFromString(@"_TtCC13DeepSeek_Chat25SessionListViewController10FooterView");
+    footerLayout=(void *)replace(footerClass,@selector(layoutSubviews),(IMP)layoutFooter);
     [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.CloudHistoryFailed" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
         static BOOL shown=NO; if (shown) return;
         UIViewController *top=topController(); if (!top || [top isKindOfClass:UIAlertController.class]) return; shown=YES;

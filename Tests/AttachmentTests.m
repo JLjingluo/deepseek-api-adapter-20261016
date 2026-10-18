@@ -17,6 +17,7 @@ int main(void) {
         NSData *image=[[NSData alloc] initWithBase64EncodedString:@"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC" options:0];
         NSDictionary *file=[store importRequest:upload(image,@"图片.png") error:&error];
         check(file && !error && [file[@"is_image"] boolValue],@"multipart PNG and Unicode filename accepted without official authentication");
+        check(CFGetTypeID((__bridge CFTypeRef)file[@"is_image"])==CFBooleanGetTypeID(),@"native file flag must encode as JSON true rather than numeric one");
         check([file[@"width"] integerValue]==8 && [file[@"height"] integerValue]==8,@"native image metadata contains valid dimensions");
         check([file[@"file_name"] isEqual:@"图片.png"] && [[store data:file[@"id"]] isEqual:image],@"binary bytes and filename preserved");
         check([[[[store contentParts:@[file] error:&error] firstObject] objectForKey:@"type"] isEqual:@"image_url"],@"image is a multimodal API content part");

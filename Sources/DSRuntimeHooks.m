@@ -18,8 +18,13 @@ static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
     NSData *data=DSOriginalUserData(self,selector,key);
     if ([key isEqual:@"currentUser"] && [data isKindOfClass:NSData.class]) {
         id user=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
-        if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isKindOfClass:NSString.class] && ![user[@"token"] isEqual:@"local-api-no-official-account"])
+        if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"api-guest"] && [user[@"token"] isEqual:@"dsapi-local-guest"]) {
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+        } else if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isKindOfClass:NSString.class] && [user[@"token"] isKindOfClass:NSString.class] && [user[@"token"] length] && ![user[@"token"] isEqual:@"local-api-no-official-account"]) {
             [NSUserDefaults.standardUserDefaults setObject:user[@"id"] forKey:@"DSAPIAdapter.currentOfficialUserID"];
+            [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
+        }
         if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"local-api"] && [user[@"token"] isEqual:@"local-api-no-official-account"]) {
             // Earlier experimental builds could persist a synthetic user through
             // the original bootstrap. It is not a valid official login token.
@@ -30,6 +35,29 @@ static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
         }
     }
     return data;
+}
+static BOOL (*DSOriginalWriteUser)(id,SEL,NSData *,NSString *);
+static void (*DSOriginalRemoveUser)(id,SEL,NSString *);
+static BOOL DSWriteUser(id self,SEL selector,NSData *data,NSString *key) {
+    BOOL written=DSOriginalWriteUser(self,selector,data,key);
+    if (written && [key isEqual:@"currentUser"] && [data isKindOfClass:NSData.class]) {
+        id user=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+        if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"api-guest"] && [user[@"token"] isEqual:@"dsapi-local-guest"]) {
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+        } else if ([user isKindOfClass:NSDictionary.class] && [user[@"token"] isKindOfClass:NSString.class] && [user[@"token"] length] && ![user[@"token"] isEqual:@"local-api-no-official-account"]) {
+            [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
+            if ([user[@"id"] isKindOfClass:NSString.class]) [NSUserDefaults.standardUserDefaults setObject:user[@"id"] forKey:@"DSAPIAdapter.currentOfficialUserID"];
+        }
+    }
+    return written;
+}
+static void DSRemoveUser(id self,SEL selector,NSString *key) {
+    DSOriginalRemoveUser(self,selector,key);
+    if ([key isEqual:@"currentUser"]) {
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+    }
 }
 static id (*DSOriginalSession)(id,SEL,NSURLSessionConfiguration *,id,NSOperationQueue *);
 static long long (*DSOriginalLocalHash)(id,SEL,NSString *,long long,NSString *);
@@ -67,10 +95,15 @@ __attribute__((constructor)) static void DSInstall(void) {
     Class mmkv=NSClassFromString(@"MMKV"); SEL readUser=NSSelectorFromString(@"getDataForKey:");
     if (class_getInstanceMethod(mmkv,readUser))
         DSOriginalUserData=(void *)DSReplace(mmkv,readUser,(IMP)DSMigrateSyntheticUser,"@@:@");
+    SEL writeUser=NSSelectorFromString(@"setData:forKey:");
+    if (class_getInstanceMethod(mmkv,writeUser)) DSOriginalWriteUser=(void *)DSReplace(mmkv,writeUser,(IMP)DSWriteUser,"B@:@@");
+    SEL removeUser=NSSelectorFromString(@"removeValueForKey:");
+    if (class_getInstanceMethod(mmkv,removeUser)) DSOriginalRemoveUser=(void *)DSReplace(mmkv,removeUser,(IMP)DSRemoveUser,"v@:@");
     Class meta = object_getClass(NSURLSession.class);
     DSOriginalSession = (void *)DSReplace(meta,@selector(sessionWithConfiguration:delegate:delegateQueue:),(IMP)DSCreateSession,"@@:@@@");
     DSBootstrapMark("url-session-hooked");
     [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
+    [NSURLProtocol registerClass:DSGuestGuardProtocol.class];
     DSBootstrapMark("protocol-registered");
     DSInstallSettingsIntegration();
     DSInstallGuestIntegration();

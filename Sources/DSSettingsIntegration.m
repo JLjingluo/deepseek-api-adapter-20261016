@@ -1,17 +1,16 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
+#import "DSAPIConfiguration.h"
 #import "DSAPISettingsViewController.h"
 #import "DSAPILocalization.h"
 
 static char DSTableKey, DSStyleKey;
 static void (*originalLoad)(id,SEL), (*originalLayout)(id,SEL);
-static NSInteger (*originalSections)(id,SEL,UITableView *);
 static NSInteger (*originalRows)(id,SEL,UITableView *,NSInteger);
 static UITableViewCell *(*originalCell)(id,SEL,UITableView *,NSIndexPath *);
 static void (*originalSelect)(id,SEL,UITableView *,NSIndexPath *);
 static BOOL (*originalHighlight)(id,SEL,UITableView *,NSIndexPath *);
-static UIView *(*originalHeader)(id,SEL,UITableView *,NSInteger), *(*originalFooter)(id,SEL,UITableView *,NSInteger);
-static CGFloat (*originalHeaderHeight)(id,SEL,UITableView *,NSInteger), (*originalFooterHeight)(id,SEL,UITableView *,NSInteger);
 static IMP replaceMethod(Class cls,SEL selector,IMP replacement) {
     Method method=class_getInstanceMethod(cls,selector); if (!method) return NULL;
     IMP original=method_getImplementation(method);
@@ -24,10 +23,9 @@ static void gatherLabels(UIView *root,NSMutableArray *labels) {
     for (UIView *child in root.subviews) gatherLabels(child,labels);
 }
 static BOOL hasAPIRow(UITableView *table) { return objc_getAssociatedObject(table,&DSTableKey)!=nil; }
-static NSInteger nativeSections(UITableView *table) {
-    return originalSections ? originalSections(table.dataSource,@selector(numberOfSectionsInTableView:),table) : 1;
+static BOOL isAPIRow(UITableView *table,NSIndexPath *index) {
+    return hasAPIRow(table) && index.section==0 && index.row==originalRows(table.dataSource,@selector(tableView:numberOfRowsInSection:),table,0);
 }
-static BOOL isAPISection(UITableView *table,NSInteger section) { return hasAPIRow(table) && section==nativeSections(table); }
 static UIFont *nativeBodyFont(UIViewController *controller) {
     UIListContentConfiguration *style=objc_getAssociatedObject(controller,&DSStyleKey);
     return style.textProperties.font ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -35,15 +33,16 @@ static UIFont *nativeBodyFont(UIViewController *controller) {
 static void presentAPI(id self,SEL selector) {
     [(UIViewController *)self presentViewController:DSAPICreateSettingsController(nativeBodyFont(self)) animated:YES completion:nil];
 }
-static NSInteger sections(id self,SEL selector,UITableView *table) {
-    NSInteger count=originalSections ? originalSections(self,selector,table) : 1;
-    return count+(hasAPIRow(table) ? 1 : 0);
-}
 static NSInteger rows(id self,SEL selector,UITableView *table,NSInteger section) {
-    return isAPISection(table,section) ? 1 : originalRows(self,selector,table,section);
+    return originalRows(self,selector,table,section)+(hasAPIRow(table) && section==0 ? 1 : 0);
 }
 static UITableViewCell *apiCell(id self,SEL selector,UITableView *table,NSIndexPath *index) {
-    if (!isAPISection(table,index.section)) return originalCell(self,selector,table,index);
+    if (!isAPIRow(table,index)) {
+        UITableViewCell *cell=originalCell(self,selector,table,index);
+        if (hasAPIRow(table) && index.section==0 && index.row==originalRows(self,@selector(tableView:numberOfRowsInSection:),table,0)-1)
+            cell.layer.maskedCorners &= ~(kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner);
+        return cell;
+    }
     UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:@"DSAPI.NativeSettingsRow"];
     if (!cell) {
         Class native=NSClassFromString(@"_TtCC13DeepSeek_Chat21ProfileViewController17InsetsGroupedCell");
@@ -54,33 +53,25 @@ static UITableViewCell *apiCell(id self,SEL selector,UITableView *table,NSIndexP
     }
     UIListContentConfiguration *style=[objc_getAssociatedObject(table.delegate,&DSStyleKey) copy] ?: [cell defaultContentConfiguration];
     style.text=DSAPILocalized(@"api"); style.secondaryText=nil;
-    style.image=[UIImage systemImageNamed:@"network"];
+    style.image=[UIImage systemImageNamed:@"network"]; style.imageProperties.tintColor=style.textProperties.color ?: UIColor.labelColor;
+    cell.layer.maskedCorners=kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
     cell.contentConfiguration=style;
     cell.accessibilityIdentifier=@"DSAPI.APISettings";
     cell.accessibilityLabel=style.text;
     return cell;
 }
 static void selectRow(id self,SEL selector,UITableView *table,NSIndexPath *index) {
-    if (isAPISection(table,index.section)) { [table deselectRowAtIndexPath:index animated:YES]; presentAPI(self,selector); }
-    else if (originalSelect) originalSelect(self,selector,table,index);
+    if (isAPIRow(table,index)) { [table deselectRowAtIndexPath:index animated:YES]; presentAPI(self,selector); }
+    else {
+        id identifier=nil;
+        SEL item=NSSelectorFromString(@"itemIdentifierForIndexPath:");
+        if (DSAPIIsLocalGuest() && [(id)table.dataSource respondsToSelector:item]) identifier=((id (*)(id,SEL,id))objc_msgSend)(table.dataSource,item,index);
+        if (DSAPIIsLocalGuest() && [[identifier description] containsString:@"accountManagement"]) DSAPIRequestGuestSignIn();
+        else if (originalSelect) originalSelect(self,selector,table,index);
+    }
 }
 static BOOL highlightRow(id self,SEL selector,UITableView *table,NSIndexPath *index) {
-    return isAPISection(table,index.section) ? YES : (originalHighlight ? originalHighlight(self,selector,table,index) : YES);
-}
-static UIView *header(id self,SEL selector,UITableView *table,NSInteger section) {
-    return isAPISection(table,section) ? nil : (originalHeader ? originalHeader(self,selector,table,section) : nil);
-}
-static UIView *footer(id self,SEL selector,UITableView *table,NSInteger section) {
-    return isAPISection(table,section) ? nil : (originalFooter ? originalFooter(self,selector,table,section) : nil);
-}
-static CGFloat headerHeight(id self,SEL selector,UITableView *table,NSInteger section) {
-    if (!isAPISection(table,section)) return originalHeaderHeight ? originalHeaderHeight(self,selector,table,section) : UITableViewAutomaticDimension;
-    NSInteger reference=MIN(1,MAX(0,nativeSections(table)-1));
-    CGFloat height=originalHeaderHeight ? originalHeaderHeight(self,selector,table,reference) : 28;
-    return height>0 ? height : 28;
-}
-static CGFloat footerHeight(id self,SEL selector,UITableView *table,NSInteger section) {
-    return isAPISection(table,section) ? 0.01 : (originalFooterHeight ? originalFooterHeight(self,selector,table,section) : UITableViewAutomaticDimension);
+    return isAPIRow(table,index) ? YES : (originalHighlight ? originalHighlight(self,selector,table,index) : YES);
 }
 static void profileLoad(id self,SEL selector) { if (originalLoad) originalLoad(self,selector); }
 static void profileLayout(id self,SEL selector) {
@@ -98,13 +89,12 @@ static void profileLayout(id self,SEL selector) {
         }
     }
     if (!hasAPIRow(table) && table.dataSource) {
-        // Keep the original diffable source and its item identifiers. Appending
-        // an independent section leaves all original section/row paths intact.
+        // Add a row to the account/settings group. Every original section and
+        // original row keeps its existing index; legal/footer content stays last.
         Class source=object_getClass(table.dataSource);
         if (![NSStringFromClass(source) containsString:@"ProfileViewController"]) return;
         static dispatch_once_t once;
         dispatch_once(&once,^{
-            originalSections=(void *)replaceMethod(source,@selector(numberOfSectionsInTableView:),(IMP)sections);
             originalRows=(void *)replaceMethod(source,@selector(tableView:numberOfRowsInSection:),(IMP)rows);
             originalCell=(void *)replaceMethod(source,@selector(tableView:cellForRowAtIndexPath:),(IMP)apiCell);
         });
@@ -125,8 +115,4 @@ void DSInstallSettingsIntegration(void) {
     originalLayout=(void *)replaceMethod(profile,@selector(viewDidLayoutSubviews),(IMP)profileLayout);
     originalSelect=(void *)replaceMethod(profile,@selector(tableView:didSelectRowAtIndexPath:),(IMP)selectRow);
     originalHighlight=(void *)replaceMethod(profile,@selector(tableView:shouldHighlightRowAtIndexPath:),(IMP)highlightRow);
-    originalHeader=(void *)replaceMethod(profile,@selector(tableView:viewForHeaderInSection:),(IMP)header);
-    originalFooter=(void *)replaceMethod(profile,@selector(tableView:viewForFooterInSection:),(IMP)footer);
-    originalHeaderHeight=(void *)replaceMethod(profile,@selector(tableView:heightForHeaderInSection:),(IMP)headerHeight);
-    originalFooterHeight=(void *)replaceMethod(profile,@selector(tableView:heightForFooterInSection:),(IMP)footerHeight);
 }

@@ -102,7 +102,7 @@ static NSString *parameter(NSString *header,NSString *key) {
     if (text.length>1024*1024) { if (error) *error=DSFileError(@"文本附件超过当前 1 MB 文本上限。"); return nil; }
     NSString *identifier=[@"api-file-" stringByAppendingString:NSUUID.UUID.UUIDString]; NSTimeInterval now=NSDate.date.timeIntervalSince1970;
     NSMutableDictionary *file=[@{@"id":identifier,@"file_name":filename,@"file_size":@(fileData.length),@"inserted_at":@(now),@"updated_at":@(now),
-        @"from_share":@NO,@"status":@"SUCCESS",@"token_usage":@0,@"is_image":@(mime!=nil),@"audit_result":@"pass",@"mime":mime ?: @"text/plain",
+        @"from_share":@NO,@"status":@"SUCCESS",@"token_usage":@0,@"is_image":(mime ? @YES : @NO),@"audit_result":@"pass",@"mime":mime ?: @"text/plain",
         @"signed_path":[@"https://chat.deepseek.com/api/v0/file/local/" stringByAppendingString:identifier]} mutableCopy];
     if (mime) { file[@"width"]=imageWidth; file[@"height"]=imageHeight; }
     NSData *json=[NSJSONSerialization dataWithJSONObject:file options:0 error:error]; if (!json) return nil;

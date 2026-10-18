@@ -13,8 +13,8 @@ service and cached with account isolation; it can be continued through API. API 
 are not uploaded to the original cloud.
 Switching back to original mode also requires restarting.
 
-The current replacement under development also adds skip sign-in with a guest/API
-prompt, an optional conversation-list API entry, provider presets without keys, automatic
+The current replacement under development also adds an explicitly local Guest profile with a sign-in/API
+prompt (it does not authenticate an official account), an optional conversation-list API entry, provider presets without keys, automatic
 model discovery plus manual model names, and provider-specific reasoning effort.
 
 API mode intercepts chat, chat sessions, file uploads and the corresponding guest challenge routes. Login,

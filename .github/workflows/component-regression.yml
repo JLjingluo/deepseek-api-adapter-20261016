@@ -49,6 +49,7 @@ jobs:
             Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ProtocolTests.m \
             -framework ImageIO -framework Foundation -framework Security -framework AVFoundation -o build/ProtocolTests
           build/ProtocolTests --official-mode
+          build/ProtocolTests --guest-offline-mode
           build/ProtocolTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
             Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSAttachmentStore.m Sources/DSUploadBodyBridge.m \

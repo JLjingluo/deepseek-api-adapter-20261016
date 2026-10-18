@@ -33,14 +33,14 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     NSString *path=request.URL.path;
     // Authentication, account settings and all original services stay native.
     // API mode owns its entire chat namespace, including unsupported chat routes.
-    return (DSAPIIsEnabled() || DSAPIHasPendingModeChange()) && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
+    return (DSAPIIsEnabled() || DSAPIHasPendingModeChange() || DSAPIIsLocalGuest()) && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
         [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] &&
         ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"] || [path hasPrefix:@"/api/v0/file/"] || [path hasPrefix:@"/api/v0/guest/chat/"] || [path isEqual:@"/api/v0/guest/available"] || [path isEqual:@"/api/v0/users/create_guest_challenge"]);
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {
     NSString *path=self.request.URL.path;
-    if (!DSAPIHasPendingModeChange() && ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"])) {
+    if (!(DSAPIIsLocalGuest() && !DSAPIIsEnabled()) && !DSAPIHasPendingModeChange() && ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"])) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
             DSAPIConfiguration *configuration=[DSAPIConfiguration loadConfiguration];
             dispatch_async(dispatch_get_main_queue(),^{
@@ -136,7 +136,8 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (NSString *)cloudOwner {
     NSString *authorization=[self.request valueForHTTPHeaderField:@"Authorization"];
-    if (!authorization.length || [authorization containsString:@"local-api-no-official-account"] || [authorization containsString:@"ci-dummy-key"]) return nil;
+    if (DSAPIIsLocalGuest() || !authorization.length || ([authorization containsString:@"local-api-no-official-account"] || [authorization containsString:@"dsapi-local-guest"])) return nil;
+    if ([authorization.lowercaseString hasPrefix:@"bearer "] && ![[authorization substringFromIndex:7] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return nil;
     NSString *identity=[NSUserDefaults.standardUserDefaults stringForKey:@"DSAPIAdapter.currentOfficialUserID"];
     NSData *bytes=[(identity.length ? [@"user:" stringByAppendingString:identity] : [@"token:" stringByAppendingString:authorization]) dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH];
     CC_SHA256(bytes.bytes,(CC_LONG)bytes.length,digest);
@@ -215,6 +216,9 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 - (void)route {
     if (DSAPIHasPendingModeChange()) { [self fail:@"服务模式已保存，请关闭并重新打开应用后再发送；本次请求未发送到原服务器或 API。"]; return; }
     NSString *requestPath=self.request.URL.path;
+    if (DSAPIIsLocalGuest() && !DSAPIIsEnabled() && ([requestPath hasSuffix:@"/chat/completion"] || [requestPath hasSuffix:@"/chat/regenerate"] || [requestPath hasSuffix:@"/chat/continue"] || [requestPath hasSuffix:@"/file/upload_file"])) {
+        DSAPIRequestGuestSignIn(); [self fail:DSAPILocalized(@"signInNote")]; return;
+    }
     if ([requestPath hasSuffix:@"/file/upload_file"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
             NSError *error=nil; NSDictionary *file=[DSAttachmentStore.shared importRequest:self.request error:&error];
@@ -223,9 +227,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
                 if (file) {
                     [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.lastAttachmentError"];
                     [NSUserDefaults.standardUserDefaults setObject:@{@"bytes":file[@"file_size"],@"mime":file[@"mime"]} forKey:@"DSAPIAdapter.lastAttachmentImport"];
-                    // Preserve the File fields for flat readers and the upload endpoint envelope.
-                    NSMutableDictionary *payload=[file mutableCopy]; payload[@"file"]=file;
-                    [self json:payload];
+                    [self json:file];
                 } else [self fail:error.localizedDescription ?: @"无法读取附件。"]; });
         }); return;
     }

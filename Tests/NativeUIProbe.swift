@@ -107,6 +107,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
         let skip=app.buttons["DSAPI.SkipLogin"].firstMatch
         XCTAssertTrue(skip.waitForExistence(timeout:10)); capture(app,"skip-login-choice"); skip.tap()
+        XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:25),"Local guest entry did not reach the original conversation UI")
         #if DSAPI_GUEST_ORIGINAL
         let guestInput=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         guestInput.tap(); guestInput.typeText("guest sign in prompt test"); dismissKeyboardHelp(app)
