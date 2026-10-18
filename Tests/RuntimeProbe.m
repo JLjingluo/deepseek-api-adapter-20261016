@@ -129,7 +129,7 @@ __attribute__((constructor)) static void DSInstallRuntimeProbe(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         DSPrepareMockConfiguration();
         DSAPIRunRuntimeProbe();
-        DSPresentAPIProbe();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,6*NSEC_PER_SEC),dispatch_get_main_queue(),^{ DSPresentAPIProbe(); });
     });
     for (int delay=9;delay<=249;delay+=10)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay*NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DSAPIRunRuntimeProbe(); });

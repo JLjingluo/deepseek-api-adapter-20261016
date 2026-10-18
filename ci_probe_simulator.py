@@ -200,6 +200,7 @@ def collect_ui_observations(device):
         ('Test Case ', ' error: ', 'DSAPI_FONT_CHANGE=', 'DSAPI_READ_ALOUD_LABEL=', 'DSAPI_API_SETTINGS_VISITED=', 'DSAPI_SWITCH_CYCLE='))]
     (diagnostics/'ui-case-summary.log').write_text('\n'.join(highlights)[-48000:])
     report['ui_test_exit_code'] = outcome.returncode
+    if outcome.returncode: capture_startup_threads()
     report['ui_test_scope'] = ('native '+focus+' only' if selected else
         ('native streaming, cancellation, read-aloud and settings' if report.get('mock_api_base_url') else 'startup and settings'))
     if results.exists():
