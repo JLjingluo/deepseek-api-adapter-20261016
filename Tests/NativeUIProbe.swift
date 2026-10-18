@@ -162,7 +162,8 @@ final class CaptureTests: XCTestCase {
         capture(app, "before-native-regeneration")
         regenerate.tap()
         let stop = app.buttons["Stop"].firstMatch
-        let started = stop.waitForExistence(timeout: 10)
+        let generating = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in stop.exists && stop.isHittable }, object: app)
+        let started = XCTWaiter.wait(for: [generating], timeout: 10) == .completed
         capture(app, "native-regeneration-started")
         print("DSAPI_REGENERATION_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_REGENERATION_END")
         XCTAssertTrue(started, "Original regenerate action did not start a new stream")
