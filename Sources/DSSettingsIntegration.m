@@ -66,7 +66,7 @@ static void selectRow(id self,SEL selector,UITableView *table,NSIndexPath *index
         id identifier=nil;
         SEL item=NSSelectorFromString(@"itemIdentifierForIndexPath:");
         if (DSAPIIsLocalGuest() && [(id)table.dataSource respondsToSelector:item]) identifier=((id (*)(id,SEL,id))objc_msgSend)(table.dataSource,item,index);
-        if (DSAPIIsLocalGuest() && [[identifier description] containsString:@"accountManagement"]) DSAPIRequestGuestSignIn();
+        if (DSAPIIsLocalGuest() && ([[identifier description] containsString:@"accountManagement"] || (index.section==0 && index.row==0))) DSAPIRequestGuestSignIn();
         else if (originalSelect) originalSelect(self,selector,table,index);
     }
 }

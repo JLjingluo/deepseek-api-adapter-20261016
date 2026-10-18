@@ -155,6 +155,7 @@ static void layoutSidebar(id self,SEL selector) {
     if (sidebarLayout) sidebarLayout(self,selector);
     UIViewController *controller=self;
     UIView *footer=find(controller.view,@"FooterView"); if (!footer || !footer.superview) return;
+    if (DSAPIIsLocalGuest()) { UILabel *name=firstLabel(footer); if (name && ![name.text isEqual:DSAPILocalized(@"guest")]) name.text=DSAPILocalized(@"guest"); }
     BOOL enabled=[DSAPIConfiguration loadConfigurationWithoutAPIKey].showAPIInChat;
     UIButton *button=objc_getAssociatedObject(self,&DSSidebarAPIKey);
     if (!button && enabled) {
