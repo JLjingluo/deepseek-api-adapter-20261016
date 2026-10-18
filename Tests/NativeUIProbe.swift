@@ -109,7 +109,12 @@ final class CaptureTests: XCTestCase {
         Thread.sleep(forTimeInterval:3)
         capture(app,"native-image-upload")
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
-        app.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:input.frame.maxX-20,dy:input.frame.maxY+32)).tap()
+        let send=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch
+        let ready=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in send.exists && send.isHittable && send.isEnabled },object:app)
+        let canSend=XCTWaiter.wait(for:[ready],timeout:15)==.completed
+        if !canSend { capture(app,"native-upload-not-ready"); print("DSAPI_IMAGE_UPLOAD_NOT_READY\n"+app.debugDescription) }
+        XCTAssertTrue(canSend,"Original image upload did not finish and enable Send")
+        send.tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@",expected,expected)).firstMatch
         let received=reply.waitForExistence(timeout:30)
         if !received { capture(app,"native-image-api-failure"); print("DSAPI_IMAGE_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_IMAGE_FAILURE_END") }
