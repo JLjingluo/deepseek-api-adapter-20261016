@@ -55,10 +55,12 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
                 self.send_error(400)
                 return
             messages = body.get('messages', [])
+            image_case=any(isinstance(m.get('content'),list) and any(p.get('type')=='image_url' for p in m['content'] if isinstance(p,dict)) for m in messages)
             cancel_case=bool(messages and messages[-1].get('content') == 'API cancellation test')
             record = {'path': self.path, 'model': body.get('model'), 'stream': body.get('stream'),
                 'message_count': len(messages), 'roles': [m.get('role') for m in messages],
-                'scenario': 'cancel' if cancel_case else ('regenerate' if messages and messages[-1].get('content') == 'API regeneration test' else 'normal'),
+                'image_parts':sum(1 for m in messages if isinstance(m.get('content'),list) for p in m['content'] if isinstance(p,dict) and p.get('type')=='image_url'),
+                'scenario': 'image' if image_case else ('cancel' if cancel_case else ('regenerate' if messages and messages[-1].get('content') == 'API regeneration test' else 'normal')),
                 'dummy_authorization_valid': self.headers.get('Authorization') == 'Bearer ci-dummy-key'}
             with lock:
                 records.append(record)
@@ -72,6 +74,7 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             self.end_headers()
             try:
                 fragments=['取消前片段：这段文字用于检查停止生成后已显示内容的保留，以及长句朗读时播放状态和停止按钮的实际变化。', '取消后不应出现'] if cancel_case else ['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']
+                if image_case: fragments=['图片已由 API 接收','：红色方块。']
                 for index, text in enumerate(fragments):
                     event = {'id': 'ci-mock', 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]}
                     wire = ('data: '+json.dumps(event, ensure_ascii=False)+'\n\n').encode()

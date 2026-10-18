@@ -100,6 +100,7 @@ static void DSPrepareMockConfiguration(void) {
     if (!configuration) return;
     Method storage=class_getInstanceMethod(configurationClass,NSSelectorFromString(@"saveKeyData:error:"));
     if (storage && !originalProbeSaveKey) originalProbeSaveKey=(void *)method_setImplementation(storage,(IMP)DSProbeSaveKey);
+    UIPasteboard.generalPasteboard.image=[UIImage imageWithData:[[NSData alloc] initWithBase64EncodedString:@"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC" options:0]];
     configuration.baseURL = baseURL;
     configuration.apiKey = @"ci-dummy-key";
     configuration.model = @"ci-mock-model";
@@ -108,15 +109,15 @@ static void DSPrepareMockConfiguration(void) {
     [NSUserDefaults.standardUserDefaults setBool:saved forKey:@"DSAPIAdapter.testConfigurationSaved"];
     if (!saved) [NSUserDefaults.standardUserDefaults setObject:[NSString stringWithFormat:@"%@ (%@:%ld)", error.localizedDescription ?: @"unknown", error.domain, (long)error.code]
         forKey:@"DSAPIAdapter.testConfigurationError"];
-    if (!saved && error.code==-34018) {
-        // Ad-hoc converted simulator apps have no provisioned keychain group.
-        // Test-only local dummy-key injection isolates rendering from signing.
-        // The actual device adapter keeps its normal Keychain implementation.
-        [NSUserDefaults.standardUserDefaults setObject:@{@"baseURL":baseURL} forKey:@"DSAPIAdapter.localTestFixture"];
+    // The loopback fixture has its own dummy key, including after a simulated
+    // successful write. Actual device Keychain behavior is a separate check.
+    [NSUserDefaults.standardUserDefaults setObject:@{@"baseURL":baseURL} forKey:@"DSAPIAdapter.localTestFixture"];
+    if (!originalFixtureLoad) {
         Method method=class_getClassMethod(configurationClass,@selector(loadConfiguration));
         originalFixtureLoad=(void *)method_setImplementation(method,(IMP)DSLoadLocalFixture);
-        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.testKeychainBypassed"];
     }
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.testKeychainBypassed"];
+
 }
 __attribute__((constructor)) static void DSInstallRuntimeProbe(void) {
     DSInstallAccountFixture();

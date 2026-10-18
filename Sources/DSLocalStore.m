@@ -1,4 +1,5 @@
 #import "DSLocalStore.h"
+#import "DSAttachmentStore.h"
 #import <TargetConditionals.h>
 
 static NSError *DSStoreError(NSString *description) {
@@ -135,11 +136,19 @@ static NSError *DSStoreError(NSString *description) {
         NSDictionary *message = [self message:identifier session:session];
         if (!message) { if (error) *error = DSStoreError(@"消息分支缺失，未发送不完整上下文。"); return nil; }
         NSMutableString *content = [NSMutableString string];
+        NSMutableArray *files=[NSMutableArray array];
         for (NSDictionary *fragment in message[@"fragments"]) {
+            if ([fragment[@"type"] isEqual:@"FILE"] && [fragment[@"files"] isKindOfClass:NSArray.class]) [files addObjectsFromArray:fragment[@"files"]];
             if (([fragment[@"type"] isEqual:@"REQUEST"] || [fragment[@"type"] isEqual:@"RESPONSE"]) &&
                 [fragment[@"content"] isKindOfClass:NSString.class]) [content appendString:fragment[@"content"]];
         }
-        if (content.length) [history insertObject:@{@"role":[message[@"role"] isEqual:@"USER"] ? @"user" : @"assistant",@"content":content} atIndex:0];
+        if (files.count && [message[@"role"] isEqual:@"USER"]) {
+            NSArray *attachments=[DSAttachmentStore.shared contentParts:files error:error]; if (!attachments) return nil;
+            NSMutableArray *parts=[NSMutableArray array];
+            if (content.length) [parts addObject:@{@"type":@"text",@"text":content}];
+            [parts addObjectsFromArray:attachments];
+            [history insertObject:@{@"role":@"user",@"content":parts} atIndex:0];
+        } else if (content.length) [history insertObject:@{@"role":[message[@"role"] isEqual:@"USER"] ? @"user" : @"assistant",@"content":content} atIndex:0];
         id parent = message[@"parent_id"]; identifier = [parent isKindOfClass:NSNumber.class] ? parent : nil;
     }
     return history;

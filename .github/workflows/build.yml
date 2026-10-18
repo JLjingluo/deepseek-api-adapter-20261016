@@ -23,10 +23,13 @@ jobs:
             -framework Foundation -framework Security -o build/StreamTests
           build/StreamTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSLocalStore.m Tests/StoreTests.m -framework Foundation -o build/StoreTests
+            Sources/DSLocalStore.m Sources/DSAttachmentStore.m Tests/StoreTests.m -framework Foundation -o build/StoreTests
           build/StoreTests
+          xcrun clang -fobjc-arc -fmodules -Wall -Wextra -ISources \
+            Sources/DSAttachmentStore.m Tests/AttachmentTests.m -framework Foundation -o build/AttachmentTests
+          build/AttachmentTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
-            Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSOpenAIClient.m Sources/DSUsageStore.m \
+            Sources/DSCompatibilityProtocol.m Sources/DSLocalStore.m Sources/DSAttachmentStore.m Sources/DSOpenAIClient.m Sources/DSUsageStore.m \
             Sources/DSVoiceCatalog.m \
             Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ProtocolTests.m \
             -framework Foundation -framework Security -framework AVFoundation -o build/ProtocolTests

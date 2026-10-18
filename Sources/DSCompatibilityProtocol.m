@@ -3,6 +3,7 @@
 #import "DSOpenAIClient.h"
 #import <CommonCrypto/CommonDigest.h>
 #import "DSVoiceCatalog.h"
+#import "DSAttachmentStore.h"
 #if DSAPI_RUNTIME_DIAGNOSTICS
 extern BOOL DSAPIValidateModelData(const void *,NSInteger,const char *);
 #endif
@@ -27,7 +28,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     // API mode owns its entire chat namespace, including unsupported chat routes.
     return DSAPIIsEnabled() && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
         [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] &&
-        ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"]);
+        ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"] || [path hasPrefix:@"/api/v0/file/"] || [path hasPrefix:@"/api/v0/guest/chat/"] || [path isEqual:@"/api/v0/guest/available"] || [path isEqual:@"/api/v0/users/create_guest_challenge"]);
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {
@@ -121,6 +122,22 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         @"has_legacy_chat_history":@NO,@"need_birthday":@NO,@"is_mainland":@NO};
 }
 - (void)route {
+    NSString *requestPath=self.request.URL.path;
+    if ([requestPath hasSuffix:@"/file/upload_file"]) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+            NSError *error=nil; NSDictionary *file=[DSAttachmentStore.shared importRequest:self.request error:&error];
+            dispatch_async(dispatch_get_main_queue(),^{
+                if (self->_stopped) return;
+                if (file) [self json:file]; else [self fail:error.localizedDescription ?: @"无法读取附件。"]; });
+        }); return;
+    }
+    if ([requestPath containsString:@"/file/local/"]) {
+        NSString *identifier=requestPath.lastPathComponent; NSDictionary *file=[DSAttachmentStore.shared file:identifier];
+        NSData *data=file ? [DSAttachmentStore.shared data:identifier] : nil;
+        if (!data) { [self fail:@"本地附件不存在。"]; return; }
+        [self responseType:file[@"mime"] ?: @"application/octet-stream"];
+        [self.client URLProtocol:self didLoadData:data]; _stopped=YES; [self.client URLProtocolDidFinishLoading:self]; return;
+    }
     NSDictionary *p = [self parameters];
     if (!p) { [self fail:@"请求体无效或超过本地资源限制。"]; return; }
     NSString *path = self.request.URL.path;
@@ -135,6 +152,21 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     #endif
     DSLocalStore *store = DSLocalStore.shared;
+    if ([path hasSuffix:@"/file/fetch_files"]) {
+        NSArray *ids=[p[@"file_ids"] isKindOfClass:NSArray.class] ? p[@"file_ids"] : @[];
+        [self json:@{@"files":[DSAttachmentStore.shared files:ids]}]; return;
+    }
+    if ([path hasSuffix:@"/file/sign_session_files"]) {
+        NSArray *paths=[p[@"paths"] isKindOfClass:NSArray.class] ? p[@"paths"] : @[];
+        NSMutableArray *results=[NSMutableArray array];
+        for (id value in paths) {
+            NSString *path=[value isKindOfClass:NSString.class] ? value : ([value isKindOfClass:NSDictionary.class] ? value[@"path"] : nil);
+            if ([path hasPrefix:@"https://chat.deepseek.com/api/v0/file/local/"]) [results addObject:@{@"path":path}];
+            else { [self fail:@"该附件属于原服务，请切回原模式查看。"]; return; }
+        }
+        [self json:@{@"results":results}]; return;
+    }
+    if ([path hasSuffix:@"/guest/available"]) { [self json:@{@"value":@"true",@"available":@YES}]; return; }
     if ([path containsString:@"/chat/tts/local_demo/"]) {
         NSString *identifier=path.lastPathComponent.stringByRemovingPercentEncoding;
         DSGenerateLocalVoiceDemo(identifier,^(NSData *data,NSError *error) {
@@ -199,7 +231,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         [self json:@{}];
     } else if ([path hasSuffix:@"/chat/get_client_streams"]) {
         [self json:@{@"streams":@[]}];
-    } else if ([path hasSuffix:@"/chat/create_pow_challenge"]) {
+    } else if ([path hasSuffix:@"/chat/create_pow_challenge"] || [path hasSuffix:@"/users/create_guest_challenge"]) {
         // An entirely local compatibility handshake; no official service is contacted.
         long long expires = (long long)((NSDate.date.timeIntervalSince1970+3600)*1000);
         NSString *salt = @"local-api-handshake";
@@ -207,7 +239,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         NSData *input = [prefix dataUsingEncoding:NSUTF8StringEncoding]; uint8_t digest[CC_SHA256_DIGEST_LENGTH];
         CC_SHA256(input.bytes,(CC_LONG)input.length,digest);
         NSMutableString *hex = [NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [hex appendFormat:@"%02x",digest[i]];
-        [self json:@{@"challenge":@{@"algorithm":@"SHA-256",@"challenge":hex,@"salt":salt,@"signature":@"local-only",
+        [self json:@{([path hasSuffix:@"/users/create_guest_challenge"] ? @"guest_challenge" : @"challenge"):@{@"algorithm":@"SHA-256",@"challenge":hex,@"salt":salt,@"signature":@"local-only",
             @"difficulty":@0,@"expire_at":@(expires),@"expire_after":@3600000}}];
     } else if ([path hasSuffix:@"/users/current"]) {
         NSMutableDictionary *u = [[self localUser] mutableCopy]; u[@"user"] = [self localUser]; [self json:u];
@@ -266,8 +298,11 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 - (void)chat:(NSDictionary *)p {
     DSAPIConfiguration *config = [DSAPIConfiguration loadConfiguration];
     if (!config.apiKey.length) { [self fail:@"请先在 API 设置中填写 Base URL、API Key 和模型名。"]; return; }
-    if ([p[@"ref_file_ids"] isKindOfClass:NSArray.class] && [p[@"ref_file_ids"] count]) {
-        [self fail:@"当前附件服务尚未接入；没有将附件静默丢弃。"]; return;
+    NSArray *fileIDs=[p[@"ref_file_ids"] isKindOfClass:NSArray.class] ? p[@"ref_file_ids"] : @[];
+    NSArray *files=[DSAttachmentStore.shared files:fileIDs];
+    NSError *attachmentError=nil;
+    if (files.count!=fileIDs.count || ![DSAttachmentStore.shared contentParts:files error:&attachmentError]) {
+        [self fail:attachmentError.localizedDescription ?: @"附件不在 API 本地存储中，请重新添加；未发送缺失的文件。"]; return;
     }
     if ([p[@"search_enabled"] boolValue]) {
         [self fail:@"当前 API 未配置联网搜索服务，请关闭搜索后发送。"]; return;
@@ -279,6 +314,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     NSNumber *parent = [p[@"parent_message_id"] isKindOfClass:NSNumber.class] ? p[@"parent_message_id"] : nil;
     NSString *prompt = [p[@"prompt"] isKindOfClass:NSString.class] ? p[@"prompt"] : nil;
+    if (!prompt && files.count) prompt=@"";
     NSString *path=self.request.URL.path;
     NSDictionary *parentMessage=parent ? [DSLocalStore.shared message:parent session:sid] : nil;
     BOOL retry=[path hasSuffix:@"/chat/regenerate"] || [p[@"action"] isEqual:@"retry"] ||
@@ -310,6 +346,12 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     if (!turn) { [self fail:error.localizedDescription]; return; }
     NSDictionary *assistant = turn.lastObject;
     NSNumber *requestID = assistant[@"parent_id"];
+    if (files.count && prompt!=nil) {
+        NSDictionary *user=[DSLocalStore.shared message:requestID session:sid];
+        NSMutableArray *fragments=[user[@"fragments"] mutableCopy];
+        [fragments addObject:@{@"id":@(requestID.longLongValue+1000000000),@"type":@"FILE",@"files":files}];
+        if (![DSLocalStore.shared updateMessage:requestID session:sid values:@{@"fragments":fragments} error:&error]) { [self fail:error.localizedDescription]; return; }
+    }
     NSArray *history = [DSLocalStore.shared apiHistory:sid endingAt:requestID error:&error];
     if (!history) { [self fail:error.localizedDescription]; return; }
     _sessionID = sid; _assistantID = assistant[@"message_id"];

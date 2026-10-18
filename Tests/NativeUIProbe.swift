@@ -87,6 +87,26 @@ final class CaptureTests: XCTestCase {
     }
 
 
+    func testNativeAttachment() throws {
+        #if DSAPI_MOCK_UI
+        let app=openNativeApp()
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        input.tap(); input.typeText("API image test")
+        input.press(forDuration:1.2)
+        let labels=["Paste","粘贴"]
+        let paste=labels.map { app.menuItems[$0].firstMatch }.first { $0.exists && $0.isHittable }
+            ?? labels.map { app.buttons[$0].firstMatch }.first { $0.exists && $0.isHittable }
+        XCTAssertNotNil(paste,"Original image-paste action is missing"); paste?.tap()
+        Thread.sleep(forTimeInterval:3)
+        capture(app,"native-image-upload")
+        XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
+        app.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:input.frame.maxX-20,dy:input.frame.maxY+32)).tap()
+        let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","图片已由 API 接收","图片已由 API 接收")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout:30),"Native image did not reach the API as an image content part")
+        capture(app,"native-image-api-reply")
+        #endif
+    }
+
     private func openExistingTestChat() -> XCUIApplication {
         let app = openNativeApp()
         if !app.buttons.matching(identifier: "DSAPI.ReadAloud").allElementsBoundByIndex.contains(where: { $0.isHittable }) {

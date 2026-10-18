@@ -12,7 +12,11 @@ public func runRuntimeProbe() {
         "status": "FINISHED", "quasi_status": "FINISHED", "thinking_enabled": false,
         "ban_edit": false, "ban_regenerate": false, "tips": [], "conversation_mode": "CHAT",
         "search_enabled": false, "search_triggered": false, "extra_search_providers": []]
+    let file: [String:Any] = ["id":"api-file-probe","file_name":"red.png","file_size":75,"inserted_at":1_760_000_000,"updated_at":1_760_000_000,"from_share":false,"status":"SUCCESS","token_usage":0,"is_image":true,"audit_result":"pass","signed_path":"https://chat.deepseek.com/api/v0/file/local/api-file-probe"]
     let fixtures: [(String, Any)] = [
+        ("ServerModels.File",file),
+        ("ServerModels.Response.FetchFile",["files":[file]]),
+        ("ServerModels.Message.FileFragment",["id":3,"type":"FILE","files":[file]]),
         ("ServerModels.Response.TTSVoiceConfig", ["voices": [["voice_id": "local-voice", "name_i18n": ["en": "Local voice"],
             "description_i18n": ["en": "Device speech"], "languages": ["en-US"], "demo_urls": ["en": "https://chat.deepseek.com/api/v0/chat/tts/local_demo/local-voice"],
             "is_default": true, "color_palette": ["c1": "#496BFF", "c2": "#95ACFF", "c3": "#E5EAFF"]]],

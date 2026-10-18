@@ -90,6 +90,10 @@ int main(int argc,const char *argv[]) {
             check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:url]],@"original login/account/bootstrap/settings always pass through");
         }
         NSURLRequest *chat=[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/chat/completion"]];
+        for (NSString *route in @[@"/file/upload_file",@"/file/fetch_files",@"/guest/chat/completion",@"/users/create_guest_challenge"]) {
+            NSURL *url=[NSURL URLWithString:[@"https://chat.deepseek.com/api/v0" stringByAppendingString:route]];
+            check([DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:url]]==enabled,@"API attachments and guest chat never fall through to official authentication");
+        }
         check([DSCompatibilityProtocol canInitWithRequest:chat]==enabled,@"chat interception follows startup mode");
         if (!enabled) {
             [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@YES} forKey:@"DSAPIAdapter.configuration.v1"];

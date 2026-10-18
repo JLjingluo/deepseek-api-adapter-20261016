@@ -11,6 +11,22 @@
 #define DSBootstrapMark(value) ((void)0)
 #endif
 
+static NSData *(*DSOriginalUserData)(id,SEL,NSString *);
+static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
+    NSData *data=DSOriginalUserData(self,selector,key);
+    if ([key isEqual:@"currentUser"] && [data isKindOfClass:NSData.class]) {
+        id user=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+        if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"local-api"] && [user[@"token"] isEqual:@"local-api-no-official-account"]) {
+            // Earlier experimental builds could persist a synthetic user through
+            // the original bootstrap. It is not a valid official login token.
+            SEL remove=NSSelectorFromString(@"removeValueForKey:");
+            if ([self respondsToSelector:remove]) ((void (*)(id,SEL,id))objc_msgSend)(self,remove,key);
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.removedLegacySyntheticUser"];
+            return nil;
+        }
+    }
+    return data;
+}
 static id (*DSOriginalSession)(id,SEL,NSURLSessionConfiguration *,id,NSOperationQueue *);
 static long long (*DSOriginalLocalHash)(id,SEL,NSString *,long long,NSString *);
 extern void DSInstallSettingsIntegration(void);
@@ -43,6 +59,9 @@ __attribute__((constructor)) static void DSInstall(void) {
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
     if (![executable isEqualToString:@"DeepSeek Chat"] || ![version isEqualToString:@"2.6.2"]) return;
     DSBootstrapMark("bundle-checked");
+    Class mmkv=NSClassFromString(@"MMKV"); SEL readUser=NSSelectorFromString(@"getDataForKey:");
+    if (class_getInstanceMethod(mmkv,readUser))
+        DSOriginalUserData=(void *)DSReplace(mmkv,readUser,(IMP)DSMigrateSyntheticUser,"@@:@");
     Class meta = object_getClass(NSURLSession.class);
     DSOriginalSession = (void *)DSReplace(meta,@selector(sessionWithConfiguration:delegate:delegateQueue:),(IMP)DSCreateSession,"@@:@@@");
     DSBootstrapMark("url-session-hooked");
