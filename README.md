@@ -7,7 +7,7 @@ The modules now include runtime routing for the user-supplied 2.6.2 binary.
 Compilation and component tests do not establish that the original app starts
 or that its UI and all features behave correctly on an iPhone.
 
-An [experimental unsigned IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/tag/experimental-ipa-2.6.2)
+An [experimental unsigned IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/tag/candidate-26)
 is now available for self-signing. It is **not a completed or verified 100% equivalent app**.
 Its accompanying manifest records CRC validation, 734 unchanged original archive
 entries and 29 unchanged original TEXT sections. These checks do not establish
@@ -37,9 +37,9 @@ cloud sharing, voice calls or attachment services. Those capabilities need separ
 compatible services before equivalent behavior can be claimed. Unsupported routes
 fail explicitly instead of falling back to the original conversation service.
 
-Limitations: original-app startup, runtime type lookup, event conversion, settings
-hooks, background behavior, original widgets and actual API requests have not been
-verified on an iPhone. These must not be described as passed tests.
+See [ACCEPTANCE.md](ACCEPTANCE.md) for verified simulator and live API evidence.
+Physical iPhone installation, background behavior, original widgets and complete
+feature/UI equivalence remain unverified. Simulator results are not iPhone acceptance.
 
 An additional manually dispatched `simulator-probe.yml` workflow investigates
 whether a disposable copy of the original arm64 binary can run on an ARM iOS

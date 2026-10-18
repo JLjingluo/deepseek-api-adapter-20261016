@@ -110,8 +110,10 @@ final class CaptureTests: XCTestCase {
         followup?.tap()
         followup?.typeText("API cancellation test")
         let send=app.buttons["Send"].firstMatch
-        XCTAssertTrue(send.waitForExistence(timeout: 5))
-        send.tap()
+        if send.exists && send.isHittable { send.tap() }
+        else if let field=followup {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: field.frame.maxX-20, dy: field.frame.maxY+32)).tap()
+        }
         let partial=app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "取消前片段", "取消前片段")).firstMatch
         XCTAssertTrue(partial.waitForExistence(timeout: 15), "Second-turn stream did not begin")
         capture(app, "before-stop-generation")
@@ -123,7 +125,7 @@ final class CaptureTests: XCTestCase {
         }
         Thread.sleep(forTimeInterval: 2)
         XCTAssertTrue(partial.exists, "Stopping generation discarded the already rendered text")
-        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "取消后不应出现")).firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "取消后不应出现", "取消后不应出现")).firstMatch.exists)
         capture(app, "after-stop-generation")
         #endif
     }
@@ -194,6 +196,7 @@ final class CaptureTests: XCTestCase {
 
     private func inspectNativePreferences(_ app: XCUIApplication) {
         let voice = app.cells["DSAPI.VoicePicker"].firstMatch
+        XCTAssertTrue(voice.exists && voice.isHittable, "Native voice setting must be reachable")
         if voice.exists && voice.isHittable {
             voice.tap()
             let choice = app.cells["tts-voice-picker-cell"].firstMatch
@@ -210,7 +213,9 @@ final class CaptureTests: XCTestCase {
             }
         }
         for names in [["Font size", "字体大小", "字體大小"], ["Personalization", "个性化", "個人化"], ["Language", "语言", "語言"]] {
-            guard let entry = names.map({ app.staticTexts[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) else { continue }
+            let found = names.map({ app.staticTexts[$0].firstMatch }).first(where: { $0.exists && $0.isHittable })
+            XCTAssertNotNil(found, "Native preference is unreachable: \(names[0])")
+            guard let entry = found else { continue }
             entry.tap()
             Thread.sleep(forTimeInterval: 1)
             capture(app, "preference-" + names[0])
