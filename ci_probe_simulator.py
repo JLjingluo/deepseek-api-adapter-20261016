@@ -390,6 +390,11 @@ def probe():
     # timed out. XCTest's foreground + responsive-control assertions are the
     # authoritative runtime acceptance, not parsing a missing CLI PID line.
     report['initial_process_alive']=report['process_alive']
+    # End the separate simctl smoke launch before XCTest takes ownership.
+    # Attaching to a process launched by another client can time out even while
+    # its window is alive. This preserves all app data and doesn't retry assertions.
+    stopped=run(['xcrun','simctl','terminate',device,bundle],timeout=30,check=False)
+    report['pre_xctest_termination_exit_code']=stopped.returncode
     collect_ui_observations(device)
     if report.get('ui_test_exit_code')==0: report['process_alive']=True
     if adapter_enabled and runtime_report.is_file():
