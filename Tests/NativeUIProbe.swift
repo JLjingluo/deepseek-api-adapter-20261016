@@ -102,7 +102,9 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
         app.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:input.frame.maxX-20,dy:input.frame.maxY+32)).tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","图片已由 API 接收","图片已由 API 接收")).firstMatch
-        XCTAssertTrue(reply.waitForExistence(timeout:30),"Native image did not reach the API as an image content part")
+        let received=reply.waitForExistence(timeout:30)
+        if !received { capture(app,"native-image-api-failure"); print("DSAPI_IMAGE_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_IMAGE_FAILURE_END") }
+        XCTAssertTrue(received,"Native image did not reach the API as an image content part")
         capture(app,"native-image-api-reply")
         #endif
     }
