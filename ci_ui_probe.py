@@ -27,7 +27,7 @@ def create_project(root):
     common = {'SDKROOT': 'iphoneos', 'IPHONEOS_DEPLOYMENT_TARGET': '18.0', 'SWIFT_VERSION': '5.0',
               'CLANG_ENABLE_MODULES': 'YES', 'TARGETED_DEVICE_FAMILY': '1,2',
               'CODE_SIGN_IDENTITY': '-', 'CODE_SIGNING_ALLOWED': 'YES',
-              'CODE_SIGN_STYLE': 'Manual',
+              'CODE_SIGN_STYLE': 'Manual', 'ONLY_ACTIVE_ARCH': 'YES', 'ARCHS': 'arm64',
               'GENERATE_INFOPLIST_FILE': 'YES'}
     host_source = add('HostSource', 'PBXFileReference', lastKnownFileType='sourcecode.swift',
                       path='ProbeHost.swift', sourceTree='<group>')

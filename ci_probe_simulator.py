@@ -330,6 +330,7 @@ def probe():
     startup_mode=os.environ.get('PROBE_STARTUP_MODE','original')
     if startup_mode not in ('original','api'): raise RuntimeError('Invalid startup mode')
     container=run(['xcrun','simctl','get_app_container',device,bundle,'data']).stdout.strip()
+    data_container=container
     preferences=pathlib.Path(container)/'Library/Preferences'/(bundle+'.plist')
     preferences.parent.mkdir(parents=True,exist_ok=True)
     values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
@@ -362,9 +363,8 @@ def probe():
         mode = 'adapter' if adapter_enabled else 'baseline'
         run(['xcrun', 'simctl', 'io', device, 'screenshot', str(diagnostics/f'{mode}-{delay}.png')], check=False)
     if adapter_enabled:
-        container = run(['xcrun', 'simctl', 'get_app_container', device, bundle, 'data'], check=False)
-        runtime_report = pathlib.Path(container.stdout.strip())/'Documents/DSAPI-runtime-probe.json'
-        if container.returncode == 0 and runtime_report.is_file():
+        runtime_report = pathlib.Path(data_container)/'Documents/DSAPI-runtime-probe.json'
+        if runtime_report.is_file():
             shutil.copy2(runtime_report, diagnostics/'runtime-probe.json')
             report['native_decoder_report_collected'] = True
         else:

@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class CaptureTests: XCTestCase {
     private func openNativeApp() -> XCUIApplication {
@@ -101,11 +102,23 @@ final class CaptureTests: XCTestCase {
         let app=openNativeApp()
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
         input.tap(); input.typeText(prompt)
+        // Set the synthetic image immediately before invoking the real native
+        // paste action; typing and system clipboard inspection can race the
+        // initial app fixture preparation on a cold simulator.
+        if let data=Data(base64Encoded:"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC"),let image=UIImage(data:data) { UIPasteboard.general.image=image }
         input.press(forDuration:1.2)
         let labels=["Paste","粘贴"]
+        let pasteReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in
+            labels.contains { app.menuItems[$0].firstMatch.exists || app.buttons[$0].firstMatch.exists }
+        },object:app)
+        _=XCTWaiter.wait(for:[pasteReady],timeout:5)
         let paste=labels.map { app.menuItems[$0].firstMatch }.first { $0.exists && $0.isHittable }
             ?? labels.map { app.buttons[$0].firstMatch }.first { $0.exists && $0.isHittable }
+        if paste==nil { capture(app,"native-image-paste-menu-missing"); print("DSAPI_PASTE_MENU_BEGIN\n"+app.debugDescription+"\nDSAPI_PASTE_MENU_END") }
         XCTAssertNotNil(paste,"Original image-paste action is missing"); paste?.tap()
+        let springboard=XCUIApplication(bundleIdentifier:"com.apple.springboard")
+        let allowPaste=springboard.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Allow Paste","允许粘贴")).firstMatch
+        if allowPaste.exists && allowPaste.isHittable { allowPaste.tap() }
         Thread.sleep(forTimeInterval:3)
         capture(app,"native-image-upload")
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
