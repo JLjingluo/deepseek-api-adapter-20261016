@@ -117,6 +117,8 @@ public func runRuntimeProbe() {
     }
     let report: [String: Any] = ["scope": "simulator-only fixture and view observation",
         "bootstrap": UserDefaults.standard.string(forKey: "DSAPIAdapter.bootstrapStatus") ?? "not reported",
+        "last_attachment_error": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastAttachmentError") ?? "none",
+        "last_attachment_import": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastAttachmentImport") ?? [:],
         "last_route": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastLocalRoute") ?? "none",
         "last_chat_request_summary": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastChatRequestSummary") ?? [:],
         "save_performed_off_main": UserDefaults.standard.bool(forKey: "DSAPIAdapter.probeSaveOffMain"),

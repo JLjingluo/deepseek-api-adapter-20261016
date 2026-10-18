@@ -68,6 +68,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (void)fail:(NSString *)description {
     if (_stopped) return;
+    if ([self.request.URL.path hasPrefix:@"/api/v0/file/"]) [NSUserDefaults.standardUserDefaults setObject:description ?: @"upload failed" forKey:@"DSAPIAdapter.lastAttachmentError"];
     [self closeHeartbeat];
     [_upstream cancel]; _upstream = nil;
     if (_assistantID) [DSActiveStreams() removeObjectForKey:_assistantID.stringValue];
@@ -138,7 +139,11 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
             NSError *error=nil; NSDictionary *file=[DSAttachmentStore.shared importRequest:self.request error:&error];
             dispatch_async(dispatch_get_main_queue(),^{
                 if (self->_stopped) return;
-                if (file) [self json:file]; else [self fail:error.localizedDescription ?: @"无法读取附件。"]; });
+                if (file) {
+                    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.lastAttachmentError"];
+                    [NSUserDefaults.standardUserDefaults setObject:@{@"bytes":file[@"file_size"],@"mime":file[@"mime"]} forKey:@"DSAPIAdapter.lastAttachmentImport"];
+                    [self json:file];
+                } else [self fail:error.localizedDescription ?: @"无法读取附件。"]; });
         }); return;
     }
     if ([requestPath containsString:@"/file/local/"]) {

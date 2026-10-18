@@ -45,9 +45,14 @@ static NSString *parameter(NSString *header,NSString *key) {
 }
 - (NSData *)data:(NSString *)identifier { NSURL *url=[self URL:identifier suffix:@".bin"]; return url ? [NSData dataWithContentsOfURL:url] : nil; }
 - (NSDictionary *)importRequest:(NSURLRequest *)request error:(NSError **)error {
-    NSData *body=request.HTTPBody;
-    if (!body && request.HTTPBodyStream) {
-        NSInputStream *stream=request.HTTPBodyStream; [stream open];
+    id upload=[NSURLProtocol propertyForKey:@"DSAPI.UploadData" inRequest:request];
+    id file=[NSURLProtocol propertyForKey:@"DSAPI.UploadFileURL" inRequest:request];
+    NSData *body=[upload isKindOfClass:NSData.class] ? upload : nil;
+    NSInputStream *bodyStream=nil;
+    if (!body && [file isKindOfClass:NSURL.class] && [(NSURL *)file isFileURL]) bodyStream=[NSInputStream inputStreamWithURL:file];
+    if (!body && !bodyStream) { body=request.HTTPBody; bodyStream=request.HTTPBodyStream; }
+    if (!body && bodyStream) {
+        NSInputStream *stream=bodyStream; [stream open];
         NSMutableData *bytes=[NSMutableData data]; uint8_t buffer[16384]; NSInteger length=0;
         while ((length=[stream read:buffer maxLength:sizeof(buffer)])>0) {
             [bytes appendBytes:buffer length:length]; if (bytes.length>DSFileLimit+65536) break;
