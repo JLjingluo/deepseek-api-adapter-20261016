@@ -20,10 +20,15 @@ jobs:
           mkdir -p build
           exec > >(tee build/component-tests.log) 2>&1
           SIMULATOR_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-          xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
-            -target arm64-apple-ios18.0-simulator \
-            -F "$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks" \
-            -D DSAPI_ADAPTER_UI -D DSAPI_MOCK_UI -D DSAPI_LIVE_UI Tests/NativeUIProbe.swift
+          python3 - <<'PY_UI'
+          from pathlib import Path
+          from ci_ui_probe import create_project
+          create_project(Path('build/UITypecheck'))
+          PY_UI
+          xcodebuild -project build/UITypecheck/NativeUIProbe.xcodeproj -scheme NativeUIProbe \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/UITypecheckBuild \
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_ADAPTER_UI DSAPI_MOCK_UI DSAPI_LIVE_UI' build-for-testing
           xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
             -target arm64-apple-ios18.0-simulator Tests/RuntimeProbe.swift
       - name: Test SSE and endpoint handling
