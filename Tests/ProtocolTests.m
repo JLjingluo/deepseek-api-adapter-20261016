@@ -38,12 +38,43 @@ static BOOL configurationReadOffMain=YES;
     c.model=@"fixture-model"; c.reasoningModel=@""; c.systemPrompt=@""; c.timeout=30; return c;
 }
 @end
+static NSString *cloudAuthorization;
+static BOOL cloudDeleted,cloudFail,cloudPinned;
+static NSString *cloudTitle;
+static NSDictionary *cloudSession(void) {
+    return @{@"id":@"cloud-history-fixture",@"title":cloudTitle ?: @"Cloud history fixture",@"title_type":@"USER",@"pinned":@(cloudPinned),@"updated_at":@1760000000,@"inserted_at":@1760000000,@"is_empty":@NO,@"model_type":@"default",@"version":@1,@"current_message_id":@42};
+}
+static NSArray *cloudMessages(void) {
+    NSMutableArray *messages=[NSMutableArray array];
+    for (NSNumber *mid in @[@41,@42]) [messages addObject:@{@"message_id":mid,@"parent_id":[mid isEqual:@41] ? NSNull.null : @41,@"role":[mid isEqual:@41] ? @"USER" : @"ASSISTANT",@"status":@"FINISHED",@"quasi_status":@"FINISHED",@"fragments":@[@{@"id":mid,@"type":[mid isEqual:@41] ? @"REQUEST" : @"RESPONSE",@"content":[mid isEqual:@41] ? @"earlier question" : @"earlier answer"}]}]; return messages;
+}
+@interface CloudFixture : NSURLProtocol
+@end
+@implementation CloudFixture
++ (BOOL)canInitWithRequest:(NSURLRequest *)request { return [request.URL.host isEqual:@"chat.deepseek.com"] && [NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request]!=nil; }
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
+- (void)stopLoading {}
+- (void)startLoading {
+    NSString *path=self.request.URL.path; NSData *body=self.request.HTTPBody;
+    if (!body && self.request.HTTPBodyStream) { NSInputStream *stream=self.request.HTTPBodyStream; [stream open]; NSMutableData *bytes=[NSMutableData data]; uint8_t buffer[1024]; NSInteger n; while ((n=[stream read:buffer maxLength:sizeof(buffer)])>0) [bytes appendBytes:buffer length:n]; [stream close]; body=bytes; }
+    NSDictionary *p=body ? [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL] : @{};
+    id payload=@{};
+    if ([path hasSuffix:@"/fetch_page"]) payload=@{@"chat_sessions":cloudDeleted ? @[] : @[cloudSession()],@"has_more":@NO};
+    else if ([path hasSuffix:@"/history_messages"]) payload=@{@"chat_session":cloudSession(),@"chat_messages":cloudMessages(),@"cache_control":@"REPLACE"};
+    else if (!cloudFail && [path hasSuffix:@"/update_title"]) cloudTitle=p[@"title"];
+    else if (!cloudFail && [path hasSuffix:@"/batch_update_pinned"]) cloudPinned=[p[@"pinned"] boolValue];
+    else if (!cloudFail && [path hasSuffix:@"/delete"]) cloudDeleted=YES;
+    NSData *data=[NSJSONSerialization dataWithJSONObject:@{@"code":@0,@"msg":@"",@"data":@{@"biz_code":@0,@"biz_msg":@"",@"biz_data":payload}} options:0 error:NULL];
+    NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:cloudFail ? 401 : 200 HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":@"application/json"}];
+    [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; [self.client URLProtocol:self didLoadData:data]; [self.client URLProtocolDidFinishLoading:self];
+}
+@end
 @interface NSURLSession (RetryFixture)
 + (NSURLSession *)retrySession:(NSURLSessionConfiguration *)config delegate:(id<NSURLSessionDelegate>)delegate queue:(NSOperationQueue *)queue;
 @end
 @implementation NSURLSession (RetryFixture)
 + (NSURLSession *)retrySession:(NSURLSessionConfiguration *)config delegate:(id<NSURLSessionDelegate>)delegate queue:(NSOperationQueue *)queue {
-    NSURLSessionConfiguration *copy=[config copy]; copy.protocolClasses=@[RetryFixture.class];
+    NSURLSessionConfiguration *copy=[config copy]; copy.protocolClasses=@[CloudFixture.class,RetryFixture.class];
     return [self retrySession:copy delegate:delegate queue:queue];
 }
 @end
@@ -69,6 +100,7 @@ static void check(BOOL value,NSString *message) {
 static Capture *request(NSString *path,NSDictionary *body) {
     NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:[NSURL URLWithString:[@"https://chat.deepseek.com/api/v0" stringByAppendingString:path]]];
     request.HTTPMethod=@"POST";
+    if (cloudAuthorization) [request setValue:cloudAuthorization forHTTPHeaderField:@"Authorization"];
     request.HTTPBody=[NSJSONSerialization dataWithJSONObject:body options:0 error:NULL];
     Capture *capture=[Capture new];
     DSCompatibilityProtocol *protocol=[[DSCompatibilityProtocol alloc] initWithRequest:request cachedResponse:nil client:capture];
@@ -169,6 +201,24 @@ int main(int argc,const char *argv[]) {
         check(configurationReadOffMain,@"chat configuration and keychain reads never block the UI thread");
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==0,@"delete updates native inventory");
+        cloudAuthorization=@"Bearer official-account-fixture-token";
+        [NSUserDefaults.standardUserDefaults setObject:@"fixture-owner-a" forKey:@"DSAPIAdapter.currentOfficialUserID"];
+        check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==1,@"API inventory includes original account history");
+        check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==2,@"original messages are imported before continuation");
+        check(!request(@"/chat/completion",@{@"chat_session_id":@"cloud-history-fixture",@"parent_message_id":@42,@"prompt":@"continue cloud history"}).error,@"original account conversation can continue through API");
+        check([retryPayload[@"messages"] count]==3 && [retryPayload[@"messages"][1][@"content"] isEqual:@"earlier answer"],@"API receives original account context");
+        check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==4,@"original refresh retains locally generated API turns");
+        cloudAuthorization=@"Bearer rotated-account-fixture-token";
+        check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==4,@"token rotation keeps the same account cache");
+        [NSUserDefaults.standardUserDefaults setObject:@"fixture-owner-b" forKey:@"DSAPIAdapter.currentOfficialUserID"];
+        check(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}).error!=nil,@"another account cannot read cached cloud history");
+        [NSUserDefaults.standardUserDefaults setObject:@"fixture-owner-a" forKey:@"DSAPIAdapter.currentOfficialUserID"];
+        payload(request(@"/chat_session/update_title",@{@"chat_session_id":@"cloud-history-fixture",@"title":@"Cloud title changed"}));
+        check([cloudTitle isEqual:@"Cloud title changed"],@"cloud rename reaches the original service");
+        payload(request(@"/chat_session/batch_update_pinned",@{@"chat_session_ids":@[@"cloud-history-fixture"],@"pinned":@YES})); check(cloudPinned,@"cloud pin reaches original service");
+        cloudFail=YES; check(request(@"/chat_session/delete",@{@"chat_session_ids":@[@"cloud-history-fixture"]}).error!=nil && [DSLocalStore.shared session:@"cloud-history-fixture"]!=nil,@"failed cloud deletion preserves the local thread");
+        cloudFail=NO; payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[@"cloud-history-fixture"]})); check(cloudDeleted && ![DSLocalStore.shared session:@"cloud-history-fixture"],@"confirmed cloud deletion removes local copy");
+        cloudAuthorization=nil; [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
         puts("PASS: native URLProtocol CRUD, envelopes, required status, local-only login rejection, unknown-route rejection");
     }
     return 0;

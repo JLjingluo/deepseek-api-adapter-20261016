@@ -8,11 +8,18 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) NSTimeInterval timeout;
 @property(nonatomic) BOOL requestUsage;
 @property(nonatomic) BOOL enabled;
+@property(nonatomic) BOOL showAPIInChat;
+@property(nonatomic) BOOL automaticModels;
+@property(nonatomic, copy) NSString *reasoningEffort;
 @property(nonatomic, copy) NSString *apiKey;
 + (instancetype)loadConfiguration;
 + (instancetype)loadConfigurationWithoutAPIKey;
 - (BOOL)save:(NSError **)error;
 - (nullable NSURL *)completionURL:(NSError **)error;
+- (nullable NSURL *)modelsURL:(NSError **)error;
+- (NSDictionary *)reasoningParametersForURL:(NSURL *)url thinking:(BOOL)thinking;
++ (NSArray<NSDictionary *> *)providerPresets;
++ (nullable NSArray<NSString *> *)modelIDsFromData:(NSData *)data status:(NSInteger)status error:(NSError **)error;
 @end
 NS_ASSUME_NONNULL_END
 

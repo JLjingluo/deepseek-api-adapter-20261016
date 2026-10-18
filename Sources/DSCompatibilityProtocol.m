@@ -8,8 +8,14 @@
 extern BOOL DSAPIValidateModelData(const void *,NSInteger,const char *);
 #endif
 
+@interface DSCompatibilityProtocol () <NSURLSessionTaskDelegate>
+@end
 @implementation DSCompatibilityProtocol {
     BOOL _stopped;
+    NSURLSession *_cloudSession;
+    NSURLSessionDataTask *_cloudTask;
+    NSDictionary *_cachedParameters;
+    BOOL _cloudMutationConfirmed;
     DSAPIConfiguration *_loadedConfiguration;
     DSOpenAIClient *_upstream;
     NSString *_sessionID;
@@ -46,6 +52,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 - (void)stopLoading {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self->_stopped) return;
+        [self->_cloudTask cancel]; [self->_cloudSession invalidateAndCancel]; self->_cloudTask=nil; self->_cloudSession=nil;
         [self closeHeartbeat];
         [self saveStreamStatus:@"INCOMPLETE"];
         self->_stopped = YES;
@@ -105,6 +112,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     [self.client URLProtocol:self didLoadData:[sse dataUsingEncoding:NSUTF8StringEncoding]];
 }
 - (NSDictionary *)parameters {
+    if (_cachedParameters) return _cachedParameters;
     NSMutableDictionary *values = [NSMutableDictionary dictionary];
     for (NSURLQueryItem *item in [NSURLComponents componentsWithURL:self.request.URL resolvingAgainstBaseURL:NO].queryItems)
         if (item.value) values[item.name] = item.value;
@@ -124,7 +132,80 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         if (![value isKindOfClass:NSDictionary.class]) return nil;
         [values addEntriesFromDictionary:value];
     }
-    return values;
+    _cachedParameters=[values copy]; return _cachedParameters;
+}
+- (NSString *)cloudOwner {
+    NSString *authorization=[self.request valueForHTTPHeaderField:@"Authorization"];
+    if (!authorization.length || [authorization containsString:@"local-api-no-official-account"] || [authorization containsString:@"ci-dummy-key"]) return nil;
+    NSString *identity=[NSUserDefaults.standardUserDefaults stringForKey:@"DSAPIAdapter.currentOfficialUserID"];
+    NSData *bytes=[(identity.length ? [@"user:" stringByAppendingString:identity] : [@"token:" stringByAppendingString:authorization]) dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(bytes.bytes,(CC_LONG)bytes.length,digest);
+    NSMutableString *key=[NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [key appendFormat:@"%02x",digest[i]]; return key;
+}
+- (NSArray *)visibleSessions {
+    NSString *owner=[self cloudOwner]; NSMutableArray *visible=[NSMutableArray array];
+    for (NSDictionary *session in DSLocalStore.shared.sessions)
+        if (!session[@"_ds_cloud_owner"] || [session[@"_ds_cloud_owner"] isEqual:owner]) [visible addObject:session];
+    return visible;
+}
+- (BOOL)canReadSession:(NSDictionary *)session {
+    return !session[@"_ds_cloud_owner"] || [session[@"_ds_cloud_owner"] isEqual:[self cloudOwner]];
+}
+- (void)cloudRequest:(NSDictionary *)parameters completion:(void (^)(NSDictionary *,NSError *))completion {
+    NSMutableURLRequest *request=[self.request mutableCopy];
+    [NSURLProtocol setProperty:@YES forKey:@"DSAPI.DirectAPI" inRequest:request];
+    request.timeoutInterval=25;
+    if (![request.HTTPMethod.uppercaseString isEqual:@"GET"]) { request.HTTPBodyStream=nil; [request setValue:nil forHTTPHeaderField:@"Content-Length"]; [request setValue:nil forHTTPHeaderField:@"Content-Encoding"]; request.HTTPBody=[NSJSONSerialization dataWithJSONObject:parameters options:0 error:NULL]; [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"]; }
+    NSURLSessionConfiguration *config=NSURLSessionConfiguration.ephemeralSessionConfiguration; config.HTTPCookieStorage=nil; config.URLCache=nil;
+    _cloudSession=[NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+    NSURLSession *session=_cloudSession;
+    _cloudTask=[session dataTaskWithRequest:request completionHandler:^(NSData *data,NSURLResponse *response,NSError *networkError) {
+        NSInteger status=[response isKindOfClass:NSHTTPURLResponse.class] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+        id root=data.length<=20*1024*1024 ? [NSJSONSerialization JSONObjectWithData:data ?: NSData.data options:0 error:NULL] : nil;
+        id wrapper=[root isKindOfClass:NSDictionary.class] && [root[@"data"] isKindOfClass:NSDictionary.class] ? root[@"data"] : nil;
+        NSDictionary *payload=[wrapper[@"biz_data"] isKindOfClass:NSDictionary.class] ? wrapper[@"biz_data"] : nil;
+        NSError *error=networkError;
+        if (!error && (status<200 || status>=300 || !payload || ![root[@"code"] isEqual:@0] || ![wrapper[@"biz_code"] isEqual:@0])) error=[NSError errorWithDomain:@"DSAPI.CloudHistory" code:status userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"原账号历史同步失败（HTTP %ld），请确认登录仍然有效。",(long)status]}];
+        [session finishTasksAndInvalidate];
+        dispatch_async(dispatch_get_main_queue(),^{ self->_cloudTask=nil; self->_cloudSession=nil; if (!self->_stopped) completion(payload,error); });
+    }]; [_cloudTask resume];
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest * _Nullable))handler { handler(nil); }
+- (BOOL)forwardCloudMutation:(NSString *)path parameters:(NSDictionary *)parameters {
+    if (_cloudMutationConfirmed) return NO;
+    BOOL all=[path hasSuffix:@"/chat_session/delete_all"];
+    BOOL mutation=all || [path hasSuffix:@"/chat_session/delete"] || [path hasSuffix:@"/chat_session/update_title"] || [path hasSuffix:@"/chat_session/batch_update_pinned"];
+    if (!mutation) return NO;
+    NSArray *ids=all ? [[self visibleSessions] valueForKey:@"id"] : ([parameters[@"chat_session_ids"] isKindOfClass:NSArray.class] ? parameters[@"chat_session_ids"] : ([parameters[@"chat_session_id"] isKindOfClass:NSString.class] ? @[parameters[@"chat_session_id"]] : @[]));
+    NSMutableArray *cloudIDs=[NSMutableArray array];
+    for (NSString *identifier in ids) {
+        if (![identifier isKindOfClass:NSString.class]) { [self fail:@"会话编号无效。"]; return YES; }
+        NSDictionary *session=[DSLocalStore.shared session:identifier];
+        if (![self canReadSession:session]) { [self fail:@"请先登录该会话所属的原账号。"]; return YES; }
+        if (session[@"_ds_cloud_owner"]) [cloudIDs addObject:identifier];
+    }
+    if (!cloudIDs.count) return NO;
+    if (![self cloudOwner]) { [self fail:@"请先登录原账号，再修改原账号会话。"]; return YES; }
+    NSMutableDictionary *remote=[parameters mutableCopy];
+    if ([path hasSuffix:@"/chat_session/delete"] || [path hasSuffix:@"/chat_session/batch_update_pinned"]) remote[@"chat_session_ids"]=cloudIDs;
+    [self cloudRequest:remote completion:^(NSDictionary *response,NSError *error) {
+        if (error) { [self fail:error.localizedDescription]; return; }
+        self->_cloudMutationConfirmed=YES; [self route];
+    }]; return YES;
+}
+- (void)reportCloudError:(NSError *)error {
+    [NSNotificationCenter.defaultCenter postNotificationName:@"DSAPIAdapter.CloudHistoryFailed" object:nil userInfo:@{NSLocalizedDescriptionKey:error.localizedDescription ?: @"原账号历史暂时无法同步，当前显示本地缓存。"}];
+}
+- (void)history:(NSString *)sid payload:(NSDictionary *)payload {
+    NSDictionary *session=[DSLocalStore.shared session:sid];
+    if (!session || ![self canReadSession:session]) { [self fail:@"请先登录该会话所属的原账号，再同步历史。"]; return; }
+    if (payload) {
+        if (![payload[@"chat_session"] isKindOfClass:NSDictionary.class] || ![payload[@"chat_session"][@"id"] isEqual:sid]) { [self fail:@"同步的会话编号不匹配，未覆盖本地记录。"]; return; }
+        NSError *error=nil;
+        if (![DSLocalStore.shared importCloudHistory:payload[@"chat_session"] messages:payload[@"chat_messages"] owner:[self cloudOwner] error:&error]) { [self fail:error.localizedDescription]; return; }
+        session=[DSLocalStore.shared session:sid];
+    }
+    [self json:@{@"cache_control":@"REPLACE",@"chat_messages":[DSLocalStore.shared messages:sid],@"chat_session":session,@"cache_reset_at":@0}];
 }
 - (NSDictionary *)localUser {
     return @{@"id":@"local-api",@"token":@"local-api-no-official-account",@"email":@"",@"mobile_number":@"",
@@ -201,14 +282,42 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     NSError *error = nil;
     NSString *sid = [p[@"chat_session_id"] isKindOfClass:NSString.class] ? p[@"chat_session_id"] : @"";
+    if (sid.length && ![self canReadSession:[store session:sid]]) { [self fail:@"请先登录该会话所属的原账号。"]; return; }
+    if ([self forwardCloudMutation:path parameters:p]) return;
     if ([path hasSuffix:@"/chat_session/create"]) {
         NSDictionary *session = [store createSession:[p[@"model_type"] isKindOfClass:NSString.class] ? p[@"model_type"] : @"default" error:&error];
         if (!session) { [self fail:error.localizedDescription]; return; }
         NSMutableDictionary *result = [session mutableCopy]; result[@"chat_session"] = session; [self json:result];
     } else if ([path hasSuffix:@"/chat_session/fetch_page"]) {
-        [self json:@{@"chat_sessions":store.sessions,@"has_more":@NO}];
+        NSString *owner=[self cloudOwner];
+        if (!owner) { [self json:@{@"chat_sessions":[self visibleSessions],@"has_more":@NO}]; return; }
+        [self cloudRequest:p completion:^(NSDictionary *cloud,NSError *failure) {
+            if (failure) { [self reportCloudError:failure]; [self json:@{@"chat_sessions":[self visibleSessions],@"has_more":@NO}]; return; }
+            NSArray *page=[cloud[@"chat_sessions"] isKindOfClass:NSArray.class] ? cloud[@"chat_sessions"] : nil;
+            NSError *error=nil;
+            if (!page || ![store importCloudSessions:page owner:owner error:&error]) { [self fail:error.localizedDescription ?: @"原账号会话列表格式无效。"]; return; }
+            NSMutableDictionary *merged=[NSMutableDictionary dictionary];
+            for (NSDictionary *session in page) merged[session[@"id"]]=[store session:session[@"id"]] ?: session;
+            id cursor=p[@"lte_cursor"] ?: p[@"lteCursor"]; if ([cursor isKindOfClass:NSString.class]) cursor=[NSJSONSerialization JSONObjectWithData:[cursor dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
+            NSDictionary *last=page.lastObject; BOOL more=[cloud[@"has_more"] boolValue];
+            for (NSDictionary *session in [self visibleSessions]) {
+                if (session[@"_ds_cloud_owner"]) continue;
+                if ([cursor isKindOfClass:NSDictionary.class]) {
+                    NSNumber *time=cursor[@"updated_at"] ?: cursor[@"updatedAt"];
+                    BOOL pinned=[cursor[@"pinned"] boolValue];
+                    if ((!pinned && [session[@"pinned"] boolValue]) || (pinned==[session[@"pinned"] boolValue] && time && [session[@"updated_at"] doubleValue]>time.doubleValue)) continue;
+                }
+                if (more && last && (([last[@"pinned"] boolValue] && ![session[@"pinned"] boolValue]) || ([last[@"pinned"] boolValue]==[session[@"pinned"] boolValue] && [session[@"updated_at"] doubleValue]<[last[@"updated_at"] doubleValue]))) continue;
+                merged[session[@"id"]]=session;
+            }
+            NSArray *ordered=[merged.allValues sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b) {
+                if ([a[@"pinned"] boolValue]!=[b[@"pinned"] boolValue]) return [a[@"pinned"] boolValue] ? NSOrderedAscending : NSOrderedDescending;
+                return [b[@"updated_at"] compare:a[@"updated_at"]];
+            }];
+            [self json:@{@"chat_sessions":ordered,@"has_more":@(more)}];
+        }];
     } else if ([path hasSuffix:@"/chat_session/delete_all"]) {
-        NSMutableArray *ids = [NSMutableArray array]; for (NSDictionary *s in store.sessions) [ids addObject:s[@"id"]];
+        NSMutableArray *ids = [NSMutableArray array]; for (NSDictionary *s in [self visibleSessions]) [ids addObject:s[@"id"]];
         if (![store deleteSessions:ids error:&error]) [self fail:error.localizedDescription]; else [self json:@{}];
     } else if ([path hasSuffix:@"/chat_session/delete"]) {
         NSArray *ids = [p[@"chat_session_ids"] isKindOfClass:NSArray.class] ? p[@"chat_session_ids"] : (sid.length ? @[sid] : @[]);
@@ -227,9 +336,20 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         }
         [self json:@{@"updated_chat_sessions":updated,@"illegal_chat_session_ids":@[],@"ignored_chat_session_ids":@[]}];
     } else if ([path hasSuffix:@"/chat/history_messages"]) {
-        NSDictionary *session = [store session:sid];
-        if (!session) { [self fail:@"本地会话不存在。"]; return; }
-        [self json:@{@"cache_control":@"REPLACE",@"chat_messages":[store messages:sid],@"chat_session":session,@"cache_reset_at":@0}];
+        NSDictionary *session=[store session:sid];
+        if (![self canReadSession:session]) { [self fail:@"请先登录该会话所属的原账号。"]; return; }
+        if ([self cloudOwner] && (!session || session[@"_ds_cloud_owner"])) {
+            [self cloudRequest:p completion:^(NSDictionary *cloud,NSError *failure) {
+                if (failure) {
+                    if ([session[@"_ds_cloud_loaded"] boolValue]) { [self reportCloudError:failure]; [self history:sid payload:nil]; }
+                    else [self fail:failure.localizedDescription];
+                } else {
+                    NSError *error=nil;
+                    if (![store importCloudSessions:@[cloud[@"chat_session"] ?: @{}] owner:[self cloudOwner] error:&error]) { [self fail:error.localizedDescription]; return; }
+                    [self history:sid payload:cloud];
+                }
+            }];
+        } else [self history:sid payload:nil];
     } else if ([path hasSuffix:@"/chat/message_feedback"]) {
         NSNumber *mid=[p[@"message_id"] isKindOfClass:NSNumber.class] ? p[@"message_id"] : nil;
         NSString *kind=[p[@"feedback_type"] isKindOfClass:NSString.class] ? [p[@"feedback_type"] uppercaseString] : nil;
@@ -325,10 +445,26 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         [self fail:@"当前 API 未配置联网搜索服务，请关闭搜索后发送。"]; return;
     }
     NSString *sid = [p[@"chat_session_id"] isKindOfClass:NSString.class] ? p[@"chat_session_id"] : @"";
+    if ([self.request.URL.path hasPrefix:@"/api/v0/guest/chat/"] && ![DSLocalStore.shared session:sid]) {
+        // Guest sessions can use a client-generated ID instead of the ID from
+        // /chat_session/create. Keep that ID mapped to a separate local thread.
+        NSString *guestKey=sid.length ? sid : @"active";
+        NSMutableDictionary *mapping=[[NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.guestSessions"] mutableCopy] ?: [NSMutableDictionary dictionary];
+        NSString *existing=mapping[guestKey];
+        if ([DSLocalStore.shared session:existing ?: @""]) sid=existing;
+        else {
+            NSError *guestError=nil; NSDictionary *session=[DSLocalStore.shared createSession:@"default" error:&guestError];
+            if (!session) { [self fail:guestError.localizedDescription]; return; }
+            sid=session[@"id"]; mapping[guestKey]=sid;
+            if (mapping.count>128) [mapping removeAllObjects]; mapping[guestKey]=sid;
+            [NSUserDefaults.standardUserDefaults setObject:mapping forKey:@"DSAPIAdapter.guestSessions"];
+        }
+    }
     if (!sid.length) {
         NSError *createError = nil; NSDictionary *session = [DSLocalStore.shared createSession:@"default" error:&createError];
         sid = session[@"id"]; if (!sid) { [self fail:createError.localizedDescription]; return; }
     }
+    if (![self canReadSession:[DSLocalStore.shared session:sid]]) { [self fail:@"请先登录该会话所属的原账号。"]; return; }
     NSNumber *parent = [p[@"parent_message_id"] isKindOfClass:NSNumber.class] ? p[@"parent_message_id"] : nil;
     NSString *prompt = [p[@"prompt"] isKindOfClass:NSString.class] ? p[@"prompt"] : nil;
     if (!prompt && files.count) prompt=@"";

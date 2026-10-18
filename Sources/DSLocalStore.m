@@ -1,6 +1,7 @@
 #import "DSLocalStore.h"
 #import "DSAttachmentStore.h"
 #import <TargetConditionals.h>
+#include <limits.h>
 
 static NSError *DSStoreError(NSString *description) {
     return [NSError errorWithDomain:@"DSAPI.Store" code:1 userInfo:@{NSLocalizedDescriptionKey:description}];
@@ -64,6 +65,45 @@ static NSError *DSStoreError(NSString *description) {
         return time == NSOrderedSame ? [a[@"id"] compare:b[@"id"]] : time;
     }];
 }
+- (BOOL)importCloudSessions:(NSArray<NSDictionary *> *)sessions owner:(NSString *)owner error:(NSError **)error {
+    NSMutableDictionary *next=[self nextState];
+    for (id value in sessions) {
+        if (![value isKindOfClass:NSDictionary.class] || ![value[@"id"] isKindOfClass:NSString.class] || ![value[@"id"] length]) { if (error) *error=DSStoreError(@"原账号会话格式无效。"); return NO; }
+        NSString *identifier=value[@"id"]; NSMutableDictionary *old=next[@"sessions"][identifier];
+        if (old[@"_ds_cloud_owner"] && ![old[@"_ds_cloud_owner"] isEqual:owner]) { if (error) *error=DSStoreError(@"会话属于不同账号，未合并。"); return NO; }
+        NSMutableDictionary *session=[value mutableCopy]; session[@"_ds_cloud_owner"]=owner;
+        if ([old[@"_api_local_turns"] boolValue]) {
+            for (NSString *key in @[@"updated_at",@"current_message_id",@"is_empty",@"_api_local_turns"]) if (old[key]) session[key]=old[key];
+        }
+        next[@"sessions"][identifier]=session;
+        if (!next[@"messages"][identifier]) next[@"messages"][identifier]=[NSMutableArray array];
+    }
+    return [self commit:next error:error];
+}
+- (BOOL)importCloudHistory:(NSDictionary *)session messages:(NSArray<NSDictionary *> *)incoming owner:(NSString *)owner error:(NSError **)error {
+    if (![session isKindOfClass:NSDictionary.class] || ![incoming isKindOfClass:NSArray.class] || ![session[@"id"] isKindOfClass:NSString.class]) { if (error) *error=DSStoreError(@"原账号历史格式无效。"); return NO; }
+    // Validate before mutating storage; retain every API branch when cloud
+    // history is refreshed rather than replacing the locally continued thread.
+    long long highest=1000000000000LL;
+    for (id message in incoming) {
+        if (![message isKindOfClass:NSDictionary.class] || ![message[@"message_id"] isKindOfClass:NSNumber.class] || ![message[@"fragments"] isKindOfClass:NSArray.class] || ![@[@"USER",@"ASSISTANT"] containsObject:message[@"role"]]) { if (error) *error=DSStoreError(@"原账号消息格式无效，未覆盖本地记录。"); return NO; }
+        highest=MAX(highest,[message[@"message_id"] longLongValue]);
+        if (highest==LLONG_MAX) { if (error) *error=DSStoreError(@"消息编号超出可用范围。"); return NO; }
+    }
+    if (![self importCloudSessions:@[session] owner:owner error:error]) return NO;
+    NSMutableDictionary *next=[self nextState]; NSString *identifier=session[@"id"];
+    NSMutableDictionary *indexed=[NSMutableDictionary dictionary];
+    for (NSDictionary *message in next[@"messages"][identifier]) indexed[[message[@"message_id"] stringValue]]=[message mutableCopy];
+    for (NSDictionary *message in incoming) {
+        NSString *key=[message[@"message_id"] stringValue];
+        if (![indexed[key][@"_api_local"] boolValue]) indexed[key]=[message mutableCopy];
+    }
+    NSArray *ordered=[indexed.allValues sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b) { return [a[@"message_id"] compare:b[@"message_id"]]; }];
+    next[@"messages"][identifier]=[ordered mutableCopy];
+    next[@"sessions"][identifier][@"_ds_cloud_loaded"]=@YES;
+    next[@"nextID"]=@(MAX([next[@"nextID"] longLongValue],highest+1));
+    return [self commit:next error:error];
+}
 - (NSDictionary *)createSession:(NSString *)model error:(NSError **)error {
     NSMutableDictionary *next = [self nextState];
     NSString *identifier = [NSUUID.UUID.UUIDString.lowercaseString stringByReplacingOccurrencesOfString:@"-" withString:@""];
@@ -106,7 +146,7 @@ static NSError *DSStoreError(NSString *description) {
     NSNumber *previous = parent;
     if (prompt != nil) {
         NSNumber *uid = next[@"nextID"]; next[@"nextID"] = @(uid.longLongValue + 1);
-        NSDictionary *user = @{@"message_id":uid,@"parent_id":previous ?: NSNull.null,@"role":@"USER",
+        NSDictionary *user = @{@"_api_local":@YES,@"message_id":uid,@"parent_id":previous ?: NSNull.null,@"role":@"USER",
             @"fragments":@[@{@"id":uid,@"type":@"REQUEST",@"content":prompt}],@"status":@"FINISHED",
             @"quasi_status":@"FINISHED",@"accumulated_token_usage":@0,@"feedback":NSNull.null,
             @"thinking_enabled":@(thinking),@"ban_edit":@NO,@"ban_regenerate":@NO,@"tips":@[],
@@ -114,12 +154,13 @@ static NSError *DSStoreError(NSString *description) {
         [messages addObject:[user mutableCopy]]; [created addObject:user]; previous = uid;
     }
     NSNumber *aid = next[@"nextID"]; next[@"nextID"] = @(aid.longLongValue + 1);
-    NSMutableDictionary *assistant = [@{@"message_id":aid,@"parent_id":previous ?: NSNull.null,@"role":@"ASSISTANT",
+    NSMutableDictionary *assistant = [@{@"_api_local":@YES,@"message_id":aid,@"parent_id":previous ?: NSNull.null,@"role":@"ASSISTANT",
         @"fragments":@[],@"status":@"WIP",@"quasi_status":@"WIP",@"accumulated_token_usage":@0,
         @"feedback":NSNull.null,@"thinking_enabled":@(thinking),@"ban_edit":@NO,@"ban_regenerate":@NO,@"tips":@[],
         @"conversation_mode":@"CHAT",@"search_enabled":@NO,@"search_triggered":@NO,@"extra_search_providers":@[]} mutableCopy];
     [messages addObject:assistant]; [created addObject:assistant];
     NSMutableDictionary *session = next[@"sessions"][identifier];
+    session[@"_api_local_turns"] = @YES;
     session[@"is_empty"] = @NO; session[@"current_message_id"] = aid;
     session[@"updated_at"] = @(NSDate.date.timeIntervalSince1970);
     if ([session[@"title"] isEqual:@"新对话"] && prompt.length) {

@@ -175,9 +175,9 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage'):
+    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage', 'guest'):
         raise RuntimeError('Unknown native test focus')
-    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage'}.get(focus)
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage', 'guest':'testNativeGuest'}.get(focus)
     target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
@@ -187,9 +187,12 @@ def collect_ui_observations(device):
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
     if report.get('live_api_proxy'): conditions.append('DSAPI_LIVE_UI')
+    if focus=='guest':
+        conditions.append('DSAPI_GUEST_UI')
+        if not report.get('startup_api_mode'): conditions.append('DSAPI_GUEST_ORIGINAL')
     if conditions: arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS='+' '.join(conditions))
     try:
-        outcome = run(arguments, timeout=600, check=False)
+        outcome = run(arguments, timeout=900, check=False)
     except subprocess.TimeoutExpired as error:
         output=error.stdout or ''
         if isinstance(output,bytes): output=output.decode(errors='replace')
@@ -335,6 +338,7 @@ def probe():
     preferences.parent.mkdir(parents=True,exist_ok=True)
     values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
     values['DSAPIAdapter.configuration.v1']={'enabled':startup_mode=='api'}
+    values['DSAPIAdapter.probeGuestContext']=os.environ.get('PROBE_UI_TEST_FOCUS')=='guest'
     if report.get('mock_api_base_url'):
         values['DSAPIAdapter.localTestFixture']={'baseURL':report['mock_api_base_url']}
         values['DSAPIAdapter.configuration.v1'].update({'baseURL':report['mock_api_base_url'],'model':'ci-mock-model','timeout':180,'requestUsage':True})

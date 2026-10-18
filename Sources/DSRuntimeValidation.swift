@@ -96,3 +96,17 @@ public func copySettingsBackingSource(_ raw: UnsafeRawPointer?) -> UnsafeMutable
     guard let backing = find(source, depth: 0) else { return nil }
     return Unmanaged.passRetained(backing).toOpaque()
 }
+
+// Use the original welcome action to enter the app's real guest context.
+// No synthetic identity or official account token is created.
+@_cdecl("DSAPIBeginGuest")
+public func beginGuest(_ raw: UnsafeRawPointer?) -> Bool {
+    guard let raw else { return false }
+    let controller=Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    var mirror:Mirror?=Mirror(reflecting:controller)
+    while let current=mirror {
+        if let action=current.children.first(where:{$0.label=="onBegin"})?.value as? () -> Void { action(); return true }
+        mirror=current.superclassMirror
+    }
+    return false
+}

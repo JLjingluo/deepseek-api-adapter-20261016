@@ -34,6 +34,21 @@ int main(void) {
         check([reopened messages:sid].count == before,@"invalid parent does not mutate history");
         check([reopened deleteSessions:@[sid] error:&error],@"delete local session");
         check([reopened session:sid] == nil && [reopened messages:sid].count == 0,@"delete removes local history");
+        NSMutableDictionary *cloud=[session mutableCopy]; cloud[@"id"]=@"cloud-fixture"; cloud[@"current_message_id"]=firstAssistant;
+        NSMutableDictionary *oldUser=[turn.firstObject mutableCopy],*oldAnswer=[turn.lastObject mutableCopy];
+        [oldUser removeObjectForKey:@"_api_local"]; [oldAnswer removeObjectForKey:@"_api_local"];
+        oldAnswer[@"fragments"]=@[@{@"type":@"RESPONSE",@"content":@"old answer"}];
+        check([reopened importCloudHistory:cloud messages:@[oldUser,oldAnswer] owner:@"owner-a" error:&error],@"original account history imports without replacing the local store");
+        NSArray *continued=[reopened beginTurn:@"cloud-fixture" parent:firstAssistant prompt:@"continue" thinking:NO error:&error];
+        check([continued.firstObject[@"message_id"] longLongValue]>1000000000000LL,@"API IDs do not reuse the cloud message number range");
+        NSArray *context=[reopened apiHistory:@"cloud-fixture" endingAt:continued.firstObject[@"message_id"] error:&error];
+        check(context.count==3 && [context[1][@"content"] isEqual:@"old answer"],@"API continuation includes original account context");
+        check([reopened importCloudHistory:cloud messages:@[oldUser,oldAnswer] owner:@"owner-a" error:&error],@"cloud refresh succeeds");
+        check([reopened messages:@"cloud-fixture"].count==4 && [[reopened session:@"cloud-fixture"][@"current_message_id"] isEqual:continued.lastObject[@"message_id"]],@"refresh preserves API reply branches and active response");
+        check(![reopened importCloudHistory:cloud messages:@[oldUser,oldAnswer] owner:@"owner-b" error:&error],@"another account cannot overwrite imported history");
+        check(![reopened importCloudHistory:cloud messages:@[@{@"message_id":@9}] owner:@"owner-a" error:&error],@"invalid remote messages are rejected before changing history");
+        DSLocalStore *synced=[[DSLocalStore alloc] initWithDirectory:directory];
+        check([synced messages:@"cloud-fixture"].count==4 && [[synced session:@"cloud-fixture"][@"_ds_cloud_owner"] isEqual:@"owner-a"],@"account isolation and API branches survive restart");
         [NSFileManager.defaultManager removeItemAtURL:directory error:NULL];
         puts("PASS: persistent conversations, selected branches, reasoning exclusion, rename, pin, deletion");
     }

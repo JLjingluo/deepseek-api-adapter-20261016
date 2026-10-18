@@ -5,6 +5,7 @@
 #import "DSAPISettingsViewController.h"
 #import "DSAPIConfiguration.h"
 #import "DSUploadBodyBridge.h"
+#import "DSGuestIntegration.h"
 #if DSAPI_RUNTIME_DIAGNOSTICS
 #import <os/log.h>
 #define DSBootstrapMark(value) os_log(OS_LOG_DEFAULT, "DSAPI bootstrap: %{public}s", value)
@@ -17,6 +18,8 @@ static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
     NSData *data=DSOriginalUserData(self,selector,key);
     if ([key isEqual:@"currentUser"] && [data isKindOfClass:NSData.class]) {
         id user=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+        if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isKindOfClass:NSString.class] && ![user[@"token"] isEqual:@"local-api-no-official-account"])
+            [NSUserDefaults.standardUserDefaults setObject:user[@"id"] forKey:@"DSAPIAdapter.currentOfficialUserID"];
         if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"local-api"] && [user[@"token"] isEqual:@"local-api-no-official-account"]) {
             // Earlier experimental builds could persist a synthetic user through
             // the original bootstrap. It is not a valid official login token.
@@ -35,8 +38,8 @@ extern void DSInstallLocalSpeechUI(void);
 
 static id DSCreateSession(id self, SEL selector, NSURLSessionConfiguration *configuration, id delegate, NSOperationQueue *queue) {
     NSURLSessionConfiguration *copy = [configuration copy];
-    NSMutableArray *classes = [NSMutableArray arrayWithObject:DSCompatibilityProtocol.class];
-    for (Class cls in copy.protocolClasses ?: @[]) if (cls != DSCompatibilityProtocol.class) [classes addObject:cls];
+    NSMutableArray *classes = [NSMutableArray arrayWithObjects:DSCompatibilityProtocol.class,DSGuestGuardProtocol.class,nil];
+    for (Class cls in copy.protocolClasses ?: @[]) if (cls != DSCompatibilityProtocol.class && cls != DSGuestGuardProtocol.class) [classes addObject:cls];
     copy.protocolClasses = classes;
     id session=DSOriginalSession(self,selector,copy,delegate,queue);
     DSAPIInstallUploadBodyBridge(session);
@@ -70,6 +73,7 @@ __attribute__((constructor)) static void DSInstall(void) {
     [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
     DSBootstrapMark("protocol-registered");
     DSInstallSettingsIntegration();
+    DSInstallGuestIntegration();
     if (DSAPIIsEnabled()) DSInstallLocalSpeechUI();
     Class pow = NSClassFromString(@"PowCalculator");
     SEL hash = NSSelectorFromString(@"solveHash256:diff:target:");

@@ -46,6 +46,14 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
         def log_message(self, *args):
             pass
 
+        def do_GET(self):
+            if self.path!='/v1/models' or self.headers.get('Authorization')!='Bearer ci-dummy-key':
+                self.send_error(401); return
+            body=json.dumps({'object':'list','data':[{'id':'ci-mock-model'},{'id':'ci-mock-reasoner'}]}).encode()
+            self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
+            with lock:
+                (pathlib.Path(diagnostics)/'model-list-request.json').write_text(json.dumps({'path':self.path,'dummy_authorization_valid':True,'models_returned':2}))
+
         def do_POST(self):
             length = int(self.headers.get('Content-Length', '0'))
             if length > 1024*1024:
@@ -62,7 +70,7 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             record = {'path': self.path, 'model': body.get('model'), 'stream': body.get('stream'),
                 'message_count': len(messages), 'roles': [m.get('role') for m in messages],
                 'image_parts':sum(1 for m in messages if isinstance(m.get('content'),list) for p in m['content'] if isinstance(p,dict) and p.get('type')=='image_url'),
-                'scenario': 'image' if image_case else ('cancel' if cancel_case else ('regenerate' if messages and messages[-1].get('content') == 'API regeneration test' else 'normal')),
+                'scenario': 'image' if image_case else ('cancel' if cancel_case else ('regenerate' if messages and messages[-1].get('content') == 'API regeneration test' else ('cloud' if messages and messages[-1].get('content')=='API cloud continuation test' else 'normal'))),
                 'dummy_authorization_valid': self.headers.get('Authorization') == 'Bearer ci-dummy-key'}
             with lock:
                 records.append(record)

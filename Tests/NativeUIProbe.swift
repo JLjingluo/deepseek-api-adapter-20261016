@@ -33,6 +33,100 @@ final class CaptureTests: XCTestCase {
         return app
     }
 
+    private func openAPISettings(_ app:XCUIApplication) {
+        XCTAssertTrue(openOriginalSettings(app))
+        let api=app.cells["DSAPI.APISettings"].firstMatch
+        XCTAssertTrue(reveal(app,api)); capture(app,"native-api-list-entry"); api.tap()
+        XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:10))
+    }
+
+    func testNativeAPIOptions() throws {
+        #if DSAPI_MOCK_UI
+        let app=openNativeApp(); openAPISettings(app)
+        let show=app.switches["DSAPI.ShowInChat"].firstMatch
+        XCTAssertTrue(show.exists && show.isHittable)
+        if (show.value as? String) != "1" { show.tap() }
+        app.buttons["DSAPI.Save"].tap()
+        XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForNonExistence(timeout:10))
+        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        app.buttons["open_sidebar"].tap()
+        let entry=app.buttons["DSAPI.ConversationAPI"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout:10)); XCTAssertTrue(entry.isHittable); capture(app,"sidebar-api-and-account"); entry.tap()
+        XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:10))
+        let automatic=app.switches["DSAPI.AutomaticModels"].firstMatch
+        XCTAssertTrue(reveal(app,automatic))
+        if (automatic.value as? String) != "1" { automatic.tap() }
+        let fetch=app.cells["DSAPI.FetchModels"].firstMatch; XCTAssertTrue(reveal(app,fetch)); fetch.tap()
+        let choice=app.staticTexts["ci-mock-reasoner"].firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout:25)); capture(app,"automatic-model-list"); choice.tap()
+        let model=app.textFields["Model"].firstMatch
+        XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
+        model.tap(); model.typeText("-manual"); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
+        app.navigationBars.firstMatch.tap()
+        let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
+        app.buttons["Max"].firstMatch.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)
+        let provider=app.cells["DSAPI.Provider"].firstMatch; XCTAssertTrue(reveal(app,provider,up:false)); provider.tap()
+        app.buttons["OpenAI / ChatGPT"].firstMatch.tap()
+        XCTAssertTrue(reveal(app,app.textFields["Base URL"])); XCTAssertEqual(app.textFields["Base URL"].value as? String,"https://api.openai.com/v1")
+        XCTAssertTrue(reveal(app,app.secureTextFields["API Key"]))
+        let key=app.secureTextFields["API Key"].value as? String
+        XCTAssertTrue(key==nil || key=="" || key=="API Key","Preset must not copy a key to another provider")
+        capture(app,"provider-preset-without-key")
+        app.buttons["DSAPI.Cancel"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout:10)); entry.tap()
+        XCTAssertTrue(app.switches["DSAPI.ShowInChat"].firstMatch.waitForExistence(timeout:10))
+        app.switches["DSAPI.ShowInChat"].firstMatch.tap(); app.buttons["DSAPI.Save"].tap()
+        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20)); app.buttons["open_sidebar"].tap()
+        XCTAssertFalse(app.buttons["DSAPI.ConversationAPI"].firstMatch.exists)
+        capture(app,"sidebar-api-option-off")
+        app.terminate()
+        #endif
+    }
+
+    func testNativeZCloudHistory() throws {
+        #if DSAPI_MOCK_UI
+        let app=openNativeApp(); app.buttons["open_sidebar"].tap()
+        let history=app.staticTexts["Cloud history fixture"].firstMatch
+        XCTAssertTrue(history.waitForExistence(timeout:15)); history.tap()
+        let oldReply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","earlier answer","earlier answer")).firstMatch
+        XCTAssertTrue(oldReply.waitForExistence(timeout:15)); capture(app,"original-history-in-api-mode")
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled }); input.tap(); input.typeText("API cloud continuation test"); dismissKeyboardHelp(app)
+        app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
+        let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout:35)); capture(app,"cloud-history-api-continuation")
+        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20)); app.buttons["open_sidebar"].tap()
+        XCTAssertTrue(history.waitForExistence(timeout:15)); history.tap(); XCTAssertTrue(reply.waitForExistence(timeout:15),"Refreshing original history discarded API replies")
+        capture(app,"cloud-history-after-refresh")
+        #endif
+    }
+
+    #if DSAPI_GUEST_UI
+    func testNativeGuest() throws {
+        continueAfterFailure=false
+        let app=XCUIApplication(bundleIdentifier:"com.deepseek.chat"); app.launch()
+        XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        let skip=app.buttons["DSAPI.SkipLogin"].firstMatch
+        XCTAssertTrue(skip.waitForExistence(timeout:10)); capture(app,"skip-login-choice"); skip.tap()
+        #if DSAPI_GUEST_ORIGINAL
+        let guestInput=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        guestInput.tap(); guestInput.typeText("guest sign in prompt test"); dismissKeyboardHelp(app)
+        app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
+        let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:15)); capture(app,"guest-sign-in-or-api")
+        let useAPI=alert.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Use API","使用 API")).firstMatch
+        XCTAssertTrue(useAPI.exists); useAPI.tap()
+        let enabled=app.switches["DSAPI.Enabled"].firstMatch; XCTAssertTrue(enabled.waitForExistence(timeout:10)); if (enabled.value as? String) != "1" { enabled.tap() }
+        app.buttons["DSAPI.Save"].tap(); let restart=app.alerts.firstMatch; XCTAssertTrue(restart.waitForExistence(timeout:10)); restart.buttons.firstMatch.tap()
+        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        #endif
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
+        input.tap(); input.typeText("API integration test"); dismissKeyboardHelp(app)
+        app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
+        let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout:35),"Guest API chat did not render without an account fixture")
+        capture(app,"guest-api-chat-without-account")
+    }
+    #endif
+
     func testNativeSettings() throws {
         let app = openNativeApp()
         continueAfterFailure = true
@@ -108,9 +202,11 @@ final class CaptureTests: XCTestCase {
         // Set the synthetic image immediately before invoking the real native
         // paste action; typing and system clipboard inspection can race the
         // initial app fixture preparation on a cold simulator.
-        if let data=Data(base64Encoded:"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC"),let image=UIImage(data:data) { UIPasteboard.general.image=image }
+        UIPasteboard.general.image=UIGraphicsImageRenderer(size:CGSize(width:512,height:512)).image { context in
+            context.cgContext.setFillColor(UIColor.red.cgColor); context.cgContext.fill(CGRect(x:0,y:0,width:512,height:512))
+        }
         input.press(forDuration:1.2)
-        dismissKeyboardHelp(app)
+        if dismissKeyboardHelp(app) { input.press(forDuration:1.2) }
         let labels=["Paste","粘贴"]
         let pasteReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in
             labels.contains { app.menuItems[$0].firstMatch.exists || app.buttons[$0].firstMatch.exists }
@@ -141,13 +237,22 @@ final class CaptureTests: XCTestCase {
         capture(app,"native-image-api-reply")
     }
 
-    private func dismissKeyboardHelp(_ app:XCUIApplication) {
+    @discardableResult private func reveal(_ app:XCUIApplication,_ element:XCUIElement,up:Bool=true) -> Bool {
+        for _ in 0..<10 {
+            if element.exists && element.isHittable { return true }
+            if up { app.swipeUp() } else { app.swipeDown() }
+        }
+        return element.exists && element.isHittable
+    }
+
+    @discardableResult private func dismissKeyboardHelp(_ app:XCUIApplication) -> Bool {
         let hint=app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","sliding your finger")).firstMatch
         if hint.waitForExistence(timeout:2) {
             let next=app.buttons["Continue"].firstMatch
-            if next.exists && next.isHittable { next.tap() }
-            else if app.staticTexts["Continue"].firstMatch.exists { app.staticTexts["Continue"].firstMatch.tap() }
+            if next.exists && next.isHittable { next.tap(); return true }
+            else if app.staticTexts["Continue"].firstMatch.exists { app.staticTexts["Continue"].firstMatch.tap(); return true }
         }
+        return false
     }
 
     private func openExistingTestChat() -> XCUIApplication {
@@ -273,7 +378,7 @@ final class CaptureTests: XCTestCase {
     }
 
     private func openOriginalSettings(_ app: XCUIApplication) -> Bool {
-        if app.buttons["DSAPI.APISettings"].firstMatch.exists { return true }
+        if app.cells["DSAPI.APISettings"].firstMatch.exists { return true }
         let sidebar=app.buttons["open_sidebar"].firstMatch
         if sidebar.exists && sidebar.isHittable { sidebar.tap() }
         capture(app,"original-sidebar-account-retained")
@@ -285,8 +390,8 @@ final class CaptureTests: XCTestCase {
             else { app.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.94)).tap() }
         }
         let profile=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@ OR label == %@","My Profile","Settings","设置","个人信息")).firstMatch
-        if !app.buttons["DSAPI.APISettings"].firstMatch.exists && profile.exists && profile.isHittable { profile.tap() }
-        return app.buttons["DSAPI.APISettings"].firstMatch.waitForExistence(timeout:10)
+        if !app.cells["DSAPI.APISettings"].firstMatch.exists && profile.exists && profile.isHittable { profile.tap() }
+        return app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","Account settings","账号管理","帳號管理")).firstMatch.waitForExistence(timeout:10)
     }
 
     private func inspectSettings(_ app: XCUIApplication) -> Bool {
@@ -302,20 +407,26 @@ final class CaptureTests: XCTestCase {
         }
         capture(app,"original-settings-account-retained")
         inspectNativePreferences(app)
-        let api=app.buttons["DSAPI.APISettings"].firstMatch
+        let api=app.cells["DSAPI.APISettings"].firstMatch
+        for _ in 0..<8 {
+            if api.exists && api.isHittable { break }
+            app.tables.firstMatch.swipeUp()
+        }
+        XCTAssertFalse(app.navigationBars.buttons["DSAPI.APISettings"].firstMatch.exists)
+        capture(app,"native-api-settings-row")
         XCTAssertTrue(api.exists && api.isHittable); api.tap()
         XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:5))
-        XCTAssertTrue(app.textFields["Base URL"].exists)
-        XCTAssertTrue(app.secureTextFields["API Key"].exists)
+        XCTAssertTrue(reveal(app,app.textFields["Base URL"]))
+        XCTAssertTrue(reveal(app,app.secureTextFields["API Key"]))
         app.swipeUp()
         let usageOption=app.switches["DSAPI.RequestUsage"].firstMatch
-        XCTAssertTrue(usageOption.exists && usageOption.isHittable)
+        XCTAssertTrue(reveal(app,usageOption))
         if usageOption.exists && usageOption.isHittable {
             let previous=usageOption.value as? String; usageOption.tap()
             XCTAssertNotEqual(usageOption.value as? String,previous); usageOption.tap()
         }
         let usage=app.cells["DSAPI.Usage"].firstMatch
-        if !usage.isHittable { app.swipeUp() }
+        _ = reveal(app,usage)
         XCTAssertTrue(usage.exists && usage.isHittable); usage.tap()
         capture(app,"api-usage-dashboard")
         let close=app.buttons["DSAPI.CloseUsage"].firstMatch

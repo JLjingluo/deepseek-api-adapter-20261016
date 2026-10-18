@@ -1,16 +1,21 @@
 # DeepSeek 2.6.2 — optional API chat
 
 This integration retains the supplied original application's sign-in, account footer,
-account management and settings. It adds an **API** button to the original Settings
-navigation bar. API mode is **off by default**; original login and chat continue using
+account management and settings. It adds an **API Settings** row inside the original Settings list, using the original
+settings cell class and typography. API mode is **off by default**; original login and chat continue using
 the original service. Enabling API chat requires saving the configuration and restarting
 the app. The existing sign-in flow is retained in both modes.
 
 API settings support HTTPS Base URL, API Key, model, optional reasoning model, system
 prompt, timeout, token-usage requests and a usage dashboard. API keys use the device-only
-Keychain. API conversations are local and separate from original cloud conversations;
-cloud conversations are not migrated to the API store. Start a new chat after switching.
+Keychain. API replies are stored locally. Signed-in account history is read from the original
+service and cached with account isolation; it can be continued through API. API replies
+are not uploaded to the original cloud.
 Switching back to original mode also requires restarting.
+
+The current replacement under development also adds skip sign-in with a guest/API
+prompt, an optional conversation-list API entry, provider presets without keys, automatic
+model discovery plus manual model names, and provider-specific reasoning effort.
 
 API mode intercepts chat, chat sessions, file uploads and the corresponding guest challenge routes. Login,
 account operations, original settings and bootstrap requests pass through to the original

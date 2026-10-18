@@ -71,6 +71,7 @@ static void runCase(NSString *name, BOOL success) {
     config.reasoningModel=@"reason-model"; config.apiKey=@"test-dummy-key";
     config.systemPrompt=@"system instruction"; config.timeout=10;
     config.requestUsage=![name isEqual:@"usage-off"];
+    config.reasoningEffort=@"high";
     DSOpenAIClient *client=[[DSOpenAIClient alloc] initWithConfiguration:config];
     __block NSUInteger terminals=0; __block NSError *failure=nil;
     NSMutableString *text=[NSMutableString string], *thought=[NSMutableString string];
@@ -95,6 +96,7 @@ static void runCase(NSString *name, BOOL success) {
         check([text isEqual:@"你好🌏"] && [thought isEqual:@"思考🧠"],@"native client preserves byte-fragmented text and reasoning");
         check([lastBody[@"model"] isEqual:@"reason-model"] && [lastBody[@"stream"] boolValue],@"reasoning model selection and SSE request");
         check([lastBody[@"messages"][0][@"role"] isEqual:@"system"] && [lastBody[@"messages"] count]==2,@"system instruction precedes caller history");
+        check([lastBody[@"reasoning_effort"] isEqual:@"high"],@"configured effort reaches the selected API request");
         check(lastBody[@"thinking"]==nil,@"generic compatible endpoint has no provider-specific parameters");
         check(config.requestUsage ? [lastBody[@"stream_options"][@"include_usage"] boolValue] : lastBody[@"stream_options"]==nil,@"standard usage option follows the saved provider setting");
         check([lastAuthorization isEqual:@"Bearer test-dummy-key"],@"caller key sent to chosen endpoint");

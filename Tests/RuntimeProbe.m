@@ -7,8 +7,9 @@
 extern void DSAPIRunRuntimeProbe(void);
 static id (*originalFixtureLoad)(id,SEL);
 static id DSLoadLocalFixture(id cls,SEL selector) {
-    DSAPIConfiguration *configuration=originalFixtureLoad(cls,selector);
     NSDictionary *fixture=[NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.localTestFixture"];
+    BOOL local=[[NSURL URLWithString:fixture[@"baseURL"] ?: @""].host isEqual:@"127.0.0.1"];
+    DSAPIConfiguration *configuration=local ? [cls loadConfigurationWithoutAPIKey] : originalFixtureLoad(cls,selector);
     if ([[NSURL URLWithString:fixture[@"baseURL"] ?: @""].host isEqual:@"127.0.0.1"]) {
         configuration.baseURL=fixture[@"baseURL"]; configuration.model=@"ci-mock-model"; configuration.apiKey=@"ci-dummy-key";
     }
@@ -34,7 +35,12 @@ static NSData *DSProbeUser(id self,SEL selector,NSString *key) {
         static NSData *canonical; static dispatch_once_t once;
         dispatch_once(&once,^{
             void *(*copyUser)(void)=dlsym(RTLD_DEFAULT,"DSAPICopyLocalUserData");
-            if (copyUser) { void *value=copyUser(); if (value) canonical=CFBridgingRelease(value); }
+            if (copyUser) { void *value=copyUser(); if (value) {
+                NSData *base=CFBridgingRelease(value);
+                NSMutableDictionary *user=[NSJSONSerialization JSONObjectWithData:base options:NSJSONReadingMutableContainers error:NULL];
+                user[@"token"]=@"ci-original-account-token";
+                canonical=[NSJSONSerialization dataWithJSONObject:user options:0 error:NULL];
+            } }
         });
         if (canonical) return canonical;
     }
@@ -45,16 +51,33 @@ static NSData *DSProbeUser(id self,SEL selector,NSString *key) {
 @implementation DSProbeAccountProtocol
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     NSString *path=request.URL.path;
+    BOOL cloud=[NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] && ([path hasPrefix:@"/api/v0/chat_session/"] || [path hasSuffix:@"/chat/history_messages"]);
     return [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] && [path hasPrefix:@"/api/"] &&
-        ![path hasPrefix:@"/api/v0/chat/"] && ![path hasPrefix:@"/api/v0/chat_session/"];
+        (cloud || (![path hasPrefix:@"/api/v0/chat/"] && ![path hasPrefix:@"/api/v0/chat_session/"]));
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)stopLoading {}
 - (void)startLoading {
     NSString *path=self.request.URL.path;
-    NSDictionary *user=@{@"id":@"local-api",@"token":@"local-api-no-official-account",@"email":@"",@"mobile_number":@"",@"area_code":@"",@"status":@0,@"id_profiles":@[],@"chat":@{@"is_muted":@0},@"has_legacy_chat_history":@NO,@"need_birthday":@NO,@"is_mainland":@NO};
+    BOOL guest=[NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.probeGuestContext"];
+    if (guest && ([path hasSuffix:@"/users/current"] || [path hasSuffix:@"/index/prepare"])) {
+        NSData *data=[@"{\"code\":401,\"msg\":\"Not signed in\",\"data\":{}}" dataUsingEncoding:NSUTF8StringEncoding];
+        NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:401 HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":@"application/json"}];
+        [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; [self.client URLProtocol:self didLoadData:data]; [self.client URLProtocolDidFinishLoading:self]; return;
+    }
+    NSDictionary *user=@{@"id":@"local-api",@"token":@"ci-original-account-token",@"email":@"",@"mobile_number":@"",@"area_code":@"",@"status":@0,@"id_profiles":@[],@"chat":@{@"is_muted":@0},@"has_legacy_chat_history":@NO,@"need_birthday":@NO,@"is_mainland":@NO};
     id payload=@{};
-    if ([path hasSuffix:@"/users/current"]) { NSMutableDictionary *value=[user mutableCopy]; value[@"user"]=user; payload=value; }
+    NSDictionary *cloud=@{@"id":@"ci-cloud-history",@"title":@"Cloud history fixture",@"title_type":@"USER",@"pinned":@NO,@"updated_at":@1760000000,@"inserted_at":@1760000000,@"is_empty":@NO,@"model_type":@"default",@"version":@1,@"current_message_id":@42};
+    if ([NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:self.request] && [path hasSuffix:@"/chat_session/fetch_page"]) payload=@{@"chat_sessions":@[cloud],@"has_more":@NO};
+    else if ([NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:self.request] && [path hasSuffix:@"/chat/history_messages"]) {
+        NSMutableArray *messages=[NSMutableArray array];
+        for (NSNumber *mid in @[@41,@42]) {
+            BOOL userMessage=[mid isEqual:@41];
+            [messages addObject:@{@"message_id":mid,@"parent_id":userMessage ? NSNull.null : @41,@"role":userMessage ? @"USER" : @"ASSISTANT",@"fragments":@[@{@"id":mid,@"type":userMessage ? @"REQUEST" : @"RESPONSE",@"content":userMessage ? @"earlier question" : @"earlier answer",@"references":@[],@"stage_id":@0}],@"status":@"FINISHED",@"quasi_status":@"FINISHED",@"thinking_enabled":@NO,@"ban_edit":@NO,@"ban_regenerate":@NO,@"tips":@[],@"conversation_mode":@"CHAT",@"search_enabled":@NO,@"search_triggered":@NO,@"extra_search_providers":@[]}];
+        }
+        payload=@{@"chat_session":cloud,@"chat_messages":messages,@"cache_control":@"REPLACE",@"cache_reset_at":@0};
+    }
+    else if ([path hasSuffix:@"/users/current"]) { NSMutableDictionary *value=[user mutableCopy]; value[@"user"]=user; payload=value; }
     else if ([path hasSuffix:@"/users/auth_token/check_device"]) payload=@{@"rotate":NSNull.null};
     else if ([path hasSuffix:@"/client/settings"]) payload=@{@"version":@0,@"settings":@{}};
     else if ([path hasSuffix:@"/index/prepare"]) {
@@ -77,11 +100,12 @@ static void DSInstallAccountFixture(void) {
     NSString *base=[NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.localTestFixture"][@"baseURL"];
     if (![[NSURL URLWithString:base ?: @""].host isEqual:@"127.0.0.1"]) return;
     Class mmkv=NSClassFromString(@"MMKV"); SEL key=NSSelectorFromString(@"getDataForKey:");
+    BOOL guest=[NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.probeGuestContext"];
     Method method=class_getInstanceMethod(mmkv,key);
-    if (method) { originalProbeUser=(void *)method_getImplementation(method); class_replaceMethod(mmkv,key,(IMP)DSProbeUser,method_getTypeEncoding(method)); }
+    if (method && !guest) { originalProbeUser=(void *)method_getImplementation(method); class_replaceMethod(mmkv,key,(IMP)DSProbeUser,method_getTypeEncoding(method)); }
     method=class_getClassMethod(NSURLSession.class,@selector(sessionWithConfiguration:delegate:delegateQueue:));
     originalProbeSession=(void *)method_setImplementation(method,(IMP)DSProbeSession);
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.accountFixtureActive"];
+    [NSUserDefaults.standardUserDefaults setBool:!guest forKey:@"DSAPIAdapter.accountFixtureActive"];
 }
 static void DSPresentAPIProbe(void) {
     if (![NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.probePresentAPI"]) return;
@@ -99,11 +123,11 @@ static void DSPrepareMockConfiguration(void) {
     NSString *baseURL=base ? [NSString stringWithUTF8String:base] : [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.localTestFixture"][@"baseURL"];
     if (!baseURL || ![[NSURL URLWithString:baseURL].host isEqual:@"127.0.0.1"]) return;
     Class configurationClass = NSClassFromString(@"DSAPIConfiguration");
-    DSAPIConfiguration *configuration = [configurationClass loadConfiguration];
+    DSAPIConfiguration *configuration = [configurationClass loadConfigurationWithoutAPIKey];
     if (!configuration) return;
     Method storage=class_getInstanceMethod(configurationClass,NSSelectorFromString(@"saveKeyData:error:"));
     if (storage && !originalProbeSaveKey) originalProbeSaveKey=(void *)method_setImplementation(storage,(IMP)DSProbeSaveKey);
-    UIPasteboard.generalPasteboard.image=[UIImage imageWithData:[[NSData alloc] initWithBase64EncodedString:@"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC" options:0]];
+    UIPasteboard.generalPasteboard.image=[[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(512,512)] imageWithActions:^(UIGraphicsImageRendererContext *context) { [UIColor.redColor setFill]; UIRectFill(CGRectMake(0,0,512,512)); }];
     configuration.baseURL = baseURL;
     configuration.apiKey = @"ci-dummy-key";
     configuration.model = @"ci-mock-model";

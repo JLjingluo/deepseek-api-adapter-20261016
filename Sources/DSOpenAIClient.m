@@ -58,6 +58,7 @@
     NSMutableArray *history = [messages mutableCopy];
     if (_configuration.systemPrompt.length) [history insertObject:@{@"role":@"system", @"content":_configuration.systemPrompt} atIndex:0];
     NSMutableDictionary *payload = [@{@"model":model, @"messages":history, @"stream":@YES} mutableCopy];
+    [payload addEntriesFromDictionary:[_configuration reasoningParametersForURL:url thinking:reasoning]];
     if (_configuration.requestUsage) payload[@"stream_options"]=@{@"include_usage":@YES};
     if (officialDeepSeek && ([model isEqualToString:@"deepseek-flash"] || [model hasPrefix:@"deepseek-v4"]))
         payload[@"thinking"] = @{@"type":reasoning ? @"enabled" : @"disabled"};

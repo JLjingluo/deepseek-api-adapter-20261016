@@ -26,7 +26,7 @@ jobs:
           xcodebuild -project build/UITypecheck/NativeUIProbe.xcodeproj -scheme NativeUIProbe \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/UITypecheckBuild \
-            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_ADAPTER_UI DSAPI_MOCK_UI DSAPI_LIVE_UI' build-for-testing
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_ADAPTER_UI DSAPI_MOCK_UI DSAPI_LIVE_UI DSAPI_GUEST_UI DSAPI_GUEST_ORIGINAL' build-for-testing
           xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
             -target arm64-apple-ios18.0-simulator Tests/RuntimeProbe.swift
       - name: Test SSE and endpoint handling

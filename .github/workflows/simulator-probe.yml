@@ -17,7 +17,7 @@ on:
       test_focus:
         description: Run the complete native suite or focus on settings
         type: choice
-        options: [all, settings, regeneration, startup, switching, attachment, liveimage]
+        options: [all, settings, regeneration, startup, switching, attachment, liveimage, guest]
         default: all
       startup_mode:
         description: Persist API mode before launch to reproduce restart failures
@@ -33,7 +33,7 @@ permissions:
 jobs:
   probe:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:

@@ -28,7 +28,7 @@ jobs:
           xcodebuild -project build/UITypecheck/NativeUIProbe.xcodeproj -scheme NativeUIProbe \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/UITypecheckBuild \
-            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_ADAPTER_UI DSAPI_MOCK_UI DSAPI_LIVE_UI' build-for-testing
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DSAPI_ADAPTER_UI DSAPI_MOCK_UI DSAPI_LIVE_UI DSAPI_GUEST_UI DSAPI_GUEST_ORIGINAL' build-for-testing
           xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
             -target arm64-apple-ios18.0-simulator Tests/RuntimeProbe.swift
       - name: Test SSE and endpoint handling
@@ -73,6 +73,7 @@ jobs:
             --title "Component failure diagnostics" --notes "Compiler and fixture output only; no live API key or input IPA." build/component-tests.log
       - name: Compile iOS arm64 library
         run: |
+          exec > >(tee -a build/component-tests.log) 2>&1
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
           mkdir -p build/objects
           for SOURCE in Sources/*.m; do
@@ -89,6 +90,16 @@ jobs:
           codesign --force --sign - build/DSAPIAdapter.dylib
           file build/DSAPIAdapter.dylib
           shasum -a 256 build/DSAPIAdapter.dylib > build/SHA256SUMS
+      - name: Publish compiler failure details
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test -f build/component-tests.log
+          TAG="component-failure-${GITHUB_RUN_ID}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Compiler or component failure" --notes "Compiler and disposable fixture output only."
+          gh release upload "$TAG" build/component-tests.log --clobber
       - name: Obtain the exact encrypted source package
         env:
           INPUT_PASSWORD: ${{ secrets.IPA_PROBE_INPUT_PASSWORD }}

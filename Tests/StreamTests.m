@@ -39,6 +39,23 @@ static void configurationTransactions(void) {
     check(![config save:&error] && config.keyWrites==writes,@"invalid endpoint does not touch keychain or mode");
     [defaults removeObjectForKey:key];
 }
+static void providerConfiguration(void) {
+    DSAPIConfiguration *config=[DSAPIConfiguration new]; config.baseURL=@"https://example.com/v1/chat/completions";
+    check([[config modelsURL:NULL].absoluteString isEqual:@"https://example.com/v1/models"],@"model discovery uses the configured API root");
+    config.reasoningEffort=@"max";
+    check([[config reasoningParametersForURL:[NSURL URLWithString:@"https://api.deepseek.com/v1"] thinking:YES][@"reasoning_effort"] isEqual:@"max"],@"DeepSeek Max mapping");
+    check([[config reasoningParametersForURL:[NSURL URLWithString:@"https://api.openai.com/v1"] thinking:YES][@"reasoning_effort"] isEqual:@"xhigh"],@"OpenAI Max mapping");
+    check([config reasoningParametersForURL:[NSURL URLWithString:@"https://api.openai.com/v1"] thinking:NO].count==0,@"Think off omits effort");
+    config.reasoningEffort=@"medium";
+    check([[config reasoningParametersForURL:[NSURL URLWithString:@"https://api.deepseek.com/v1"] thinking:YES][@"reasoning_effort"] isEqual:@"high"],@"DeepSeek medium follows official mapping");
+    config.reasoningEffort=@"auto";
+    check([config reasoningParametersForURL:[NSURL URLWithString:@"https://example.com"] thinking:YES].count==0,@"automatic effort preserves default provider behavior");
+    NSData *data=[NSJSONSerialization dataWithJSONObject:@{@"data":@[@{@"id":@"b"},@{@"id":@"a"},@{@"id":@"a"},@{@"id":@42},@{}]} options:0 error:NULL];
+    check([[DSAPIConfiguration modelIDsFromData:data status:200 error:NULL] isEqual:@[@"a",@"b"]],@"model list is validated, sorted and deduplicated");
+    for (NSNumber *status in @[@401,@429,@500]) { NSError *error=nil; check(![DSAPIConfiguration modelIDsFromData:data status:status.integerValue error:&error] && error!=nil,@"model discovery reports HTTP failure without exposing response bodies"); }
+    check(![DSAPIConfiguration modelIDsFromData:[@"not JSON" dataUsingEncoding:NSUTF8StringEncoding] status:200 error:NULL],@"invalid model response is rejected");
+    for (NSDictionary *preset in DSAPIConfiguration.providerPresets) { config.baseURL=preset[@"baseURL"]; check([config completionURL:NULL]!=nil && preset[@"apiKey"]==nil,@"presets contain valid HTTPS endpoints and no key"); }
+}
 static NSString *event(NSDictionary *delta, id finish) {
     NSDictionary *value = @{@"choices":@[@{@"index":@0,@"delta":delta,@"finish_reason":finish ?: NSNull.null}]};
     NSData *data = [NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
@@ -92,6 +109,7 @@ int main(void) {
             configuration.baseURL = base; check([configuration completionURL:NULL] == nil,@"unsafe URL rejected");
         }
         configurationTransactions();
+        providerConfiguration();
         puts("PASS: stream fragmentation, terminal errors, reasoning, URL validation");
     }
     return 0;
