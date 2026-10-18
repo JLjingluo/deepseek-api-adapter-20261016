@@ -6,6 +6,8 @@ import pathlib
 import ssl
 import threading
 import time
+import urllib.request
+import urllib.error
 
 
 def start_mock_api(root, diagnostics, device, run):
@@ -67,6 +69,35 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
                 (pathlib.Path(diagnostics)/'mock-api.json').write_text(json.dumps(records, indent=2))
             if self.path != '/v1/chat/completions' or not record['dummy_authorization_valid']:
                 self.send_error(401)
+                return
+            if os.environ.get('PROBE_LIVE_API')=='true':
+                secret=os.environ.get('TEST_API_KEY','')
+                if not secret: self.send_error(503); return
+                outgoing=dict(body); outgoing['model']='deepseek-chat'
+                record['provider_model']='deepseek-chat'; record['live_provider']='https://api.deepseek.com/v1'
+                request=urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
+                    data=json.dumps(outgoing).encode(),headers={'Authorization':'Bearer '+secret,'Content-Type':'application/json'})
+                try:
+                    with urllib.request.urlopen(request,timeout=90) as upstream:
+                        record['provider_http_status']=upstream.status
+                        self.send_response(upstream.status)
+                        self.send_header('Content-Type','text/event-stream; charset=utf-8')
+                        self.send_header('Connection','close'); self.end_headers()
+                        for wire in upstream:
+                            if wire.startswith(b'data:'):
+                                try:
+                                    value=json.loads(wire[5:].strip())
+                                    if value.get('usage'): record['usage']=value['usage']
+                                except (ValueError,TypeError): pass
+                            self.wfile.write(wire); self.wfile.flush()
+                        record['completed']=True
+                except urllib.error.HTTPError as error:
+                    record['provider_http_status']=error.code; self.send_error(error.code)
+                except (BrokenPipeError,ConnectionResetError,ssl.SSLError): record['disconnected_before_finish']=True
+                except (urllib.error.URLError,TimeoutError): record['provider_error']='network'; self.send_error(502)
+                finally:
+                    self.close_connection=True
+                    with lock: (pathlib.Path(diagnostics)/'mock-api.json').write_text(json.dumps(records,indent=2))
                 return
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream; charset=utf-8')

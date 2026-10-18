@@ -89,9 +89,18 @@ final class CaptureTests: XCTestCase {
 
     func testNativeAttachment() throws {
         #if DSAPI_MOCK_UI
+        try runNativeImage(prompt:"API image test",expected:"图片已由 API 接收")
+        #endif
+    }
+    #if DSAPI_LIVE_UI
+    func testNativeLiveAPIImage() throws {
+        try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
+    }
+    #endif
+    private func runNativeImage(prompt:String,expected:String) throws {
         let app=openNativeApp()
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
-        input.tap(); input.typeText("API image test")
+        input.tap(); input.typeText(prompt)
         input.press(forDuration:1.2)
         let labels=["Paste","粘贴"]
         let paste=labels.map { app.menuItems[$0].firstMatch }.first { $0.exists && $0.isHittable }
@@ -101,12 +110,11 @@ final class CaptureTests: XCTestCase {
         capture(app,"native-image-upload")
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
         app.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:input.frame.maxX-20,dy:input.frame.maxY+32)).tap()
-        let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","图片已由 API 接收","图片已由 API 接收")).firstMatch
+        let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@",expected,expected)).firstMatch
         let received=reply.waitForExistence(timeout:30)
         if !received { capture(app,"native-image-api-failure"); print("DSAPI_IMAGE_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_IMAGE_FAILURE_END") }
         XCTAssertTrue(received,"Native image did not reach the API as an image content part")
         capture(app,"native-image-api-reply")
-        #endif
     }
 
     private func openExistingTestChat() -> XCUIApplication {

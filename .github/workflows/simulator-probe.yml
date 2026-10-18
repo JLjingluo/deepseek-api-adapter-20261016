@@ -17,13 +17,17 @@ on:
       test_focus:
         description: Run the complete native suite or focus on settings
         type: choice
-        options: [all, settings, regeneration, startup, switching, attachment]
+        options: [all, settings, regeneration, startup, switching, attachment, liveimage]
         default: all
       startup_mode:
         description: Persist API mode before launch to reproduce restart failures
         type: choice
         options: [original, api]
         default: original
+      live_api:
+        description: Forward the disposable fixture to official API using a temporary secret
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -65,6 +69,8 @@ jobs:
           PY
       - name: Probe original binary in a disposable simulator copy
         env:
+          PROBE_LIVE_API: ${{ inputs.live_api }}
+          TEST_API_KEY: ${{ inputs.live_api && secrets.DSAPI_TEMPORARY_TEST_KEY || '' }}
           PROBE_ADAPTER: ${{ inputs.adapter }}
           PROBE_MOCK_API: ${{ inputs.mock_api }}
           PROBE_PACKAGED_ADAPTER: ${{ inputs.candidate_tag != '' }}

@@ -175,9 +175,9 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment'):
+    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage'):
         raise RuntimeError('Unknown native test focus')
-    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment'}.get(focus)
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage'}.get(focus)
     target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
@@ -186,6 +186,7 @@ def collect_ui_observations(device):
     conditions=[]
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
+    if report.get('live_api_proxy'): conditions.append('DSAPI_LIVE_UI')
     if conditions: arguments.insert(-1, 'SWIFT_ACTIVE_COMPILATION_CONDITIONS='+' '.join(conditions))
     try:
         outcome = run(arguments, timeout=600, check=False)
@@ -238,6 +239,8 @@ def probe():
     run(['xcrun', 'simctl', 'boot', device])
     run(['xcrun', 'simctl', 'bootstatus', device, '-b'], timeout=240)
     root.mkdir(exist_ok=True)
+    report['live_api_proxy']=os.environ.get('PROBE_LIVE_API')=='true'
+    if report['live_api_proxy'] and not os.environ.get('TEST_API_KEY'): raise RuntimeError('Missing temporary live test secret')
     if adapter_enabled and os.environ.get('PROBE_MOCK_API') == 'true':
         from ci_mock_api import start_mock_api
         server, base_url = start_mock_api(root, diagnostics, device, run)
