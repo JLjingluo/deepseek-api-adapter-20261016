@@ -61,7 +61,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(choice.waitForExistence(timeout:25)); capture(app,"automatic-model-list"); choice.tap()
         let model=app.textFields["Model"].firstMatch
         XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
-        model.tap(); model.typeText("-manual"); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
+        model.tap(); model.typeText("-manual"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
         app.navigationBars.firstMatch.tap()
         let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
         app.buttons["Max"].firstMatch.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)

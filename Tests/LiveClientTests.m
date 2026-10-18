@@ -3,11 +3,12 @@
 #import "DSUsageStore.h"
 
 static NSMutableArray *results;
+static NSString *liveEffort;
 static BOOL runCase(NSString *name, NSString *key, NSString *model, BOOL thinking,
     NSArray *history, NSString *system, NSString *expected, NSInteger expectedError, BOOL cancel) {
     DSAPIConfiguration *config=[DSAPIConfiguration new];
     config.baseURL=@"https://api.deepseek.com/v1"; config.apiKey=key; config.model=model;
-    config.reasoningModel=@""; config.systemPrompt=system; config.timeout=30;
+    config.reasoningModel=@""; config.systemPrompt=system; config.timeout=30; config.reasoningEffort=liveEffort ?: @"auto";
     DSOpenAIClient *client=[[DSOpenAIClient alloc] initWithConfiguration:config];
     __block NSUInteger terminals=0, chunks=0;
     __block NSError *failure=nil;
@@ -55,6 +56,22 @@ int main(void) {
             @[@{@"role":@"user",@"content":@"Count from 1 to 100, one number per line."}],@"",@"",NSURLErrorCancelled,YES);
         passed &= runCase(@"native_invalid_key",@"invalid-ci-key",@"deepseek-flash",NO,simple,@"",@"",401,NO);
         passed &= runCase(@"native_invalid_model",key,@"dsapi-nonexistent-model",NO,simple,@"",@"",400,NO);
+        liveEffort=@"max";
+        passed &= runCase(@"native_max_effort",key,@"deepseek-flash",YES,@[@{@"role":@"user",@"content":@"Compute 19*11; reply with the answer only."}],@"",@"209",0,NO);
+        DSAPIConfiguration *discovery=[DSAPIConfiguration new]; discovery.baseURL=@"https://api.deepseek.com/v1";
+        NSMutableURLRequest *modelRequest=[NSMutableURLRequest requestWithURL:[discovery modelsURL:NULL]];
+        [modelRequest setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"]; modelRequest.timeoutInterval=20;
+        __block BOOL modelDone=NO,modelsPassed=NO; __block NSUInteger modelCount=0; __block NSInteger modelStatus=0;
+        NSURLSession *modelSession=[NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration];
+        [[modelSession dataTaskWithRequest:modelRequest completionHandler:^(NSData *data,NSURLResponse *response,NSError *error) {
+            modelStatus=[response isKindOfClass:NSHTTPURLResponse.class] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+            NSArray *ids=error ? nil : [DSAPIConfiguration modelIDsFromData:data status:modelStatus error:NULL]; modelCount=ids.count; modelsPassed=ids.count>0; modelDone=YES;
+        }] resume];
+        NSDate *modelDeadline=[NSDate dateWithTimeIntervalSinceNow:25];
+        while (!modelDone && modelDeadline.timeIntervalSinceNow>0) [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+        [modelSession invalidateAndCancel]; passed &= modelsPassed;
+        [results addObject:@{@"name":@"native_model_discovery",@"passed":@(modelsPassed),@"http_status":@(modelStatus),@"model_count":@(modelCount)}];
+        printf("%s: native_model_discovery\n",modelsPassed ? "PASS" : "FAIL");
         NSDictionary *usage=DSAPIUsageSnapshot();
         BOOL usagePassed=[usage[@"total_tokens"] longLongValue]>0 && [usage[@"reported_requests"] longLongValue]>=3;
         passed &= usagePassed;

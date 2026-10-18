@@ -94,7 +94,7 @@ static void profileLayout(id self,SEL selector) {
     for (UITableViewCell *cell in table.visibleCells) {
         if ([cell.accessibilityIdentifier isEqual:@"DSAPI.APISettings"]) continue;
         if ([cell.contentConfiguration isKindOfClass:UIListContentConfiguration.class]) {
-            objc_setAssociatedObject(self,&DSStyleKey,[cell.contentConfiguration copy],OBJC_ASSOCIATION_RETAIN_NONATOMIC); break;
+            objc_setAssociatedObject(self,&DSStyleKey,[(UIListContentConfiguration *)cell.contentConfiguration copy],OBJC_ASSOCIATION_RETAIN_NONATOMIC); break;
         }
     }
     if (!hasAPIRow(table) && table.dataSource) {
@@ -113,7 +113,7 @@ static void profileLayout(id self,SEL selector) {
         [table reloadData];
     }
     for (UITableViewCell *cell in table.visibleCells) if ([cell.accessibilityIdentifier isEqual:@"DSAPI.APISettings"]) {
-        UIListContentConfiguration *style=[cell.contentConfiguration copy];
+        UIListContentConfiguration *style=[(UIListContentConfiguration *)cell.contentConfiguration copy];
         UIFont *font=nativeBodyFont(controller);
         if (![style.text isEqual:DSAPILocalized(@"api")] || ![style.textProperties.font isEqual:font]) { style.text=DSAPILocalized(@"api"); style.textProperties.font=font; cell.contentConfiguration=style; cell.accessibilityLabel=style.text; }
     }
