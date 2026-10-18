@@ -302,6 +302,11 @@ final class CaptureTests: XCTestCase {
                 if close.exists && close.isHittable { close.tap() }
             }
         }
+        // The original voice-switched toast overlaps the Font size row and
+        // consumes taps while visible. Wait for it instead of tapping through it.
+        let voiceToast=app.staticTexts.matching(NSPredicate(format:"label BEGINSWITH %@","Voice switched"))
+        expectation(for:NSPredicate { _, _ in voiceToast.count==0 },evaluatedWith:app)
+        waitForExpectations(timeout:10)
         for names in [["Font size", "字体大小", "字體大小"], ["Personalization", "个性化", "個人化"], ["Language", "语言", "語言"]] {
             let found = names.map({ app.staticTexts[$0].firstMatch }).first(where: { $0.exists && $0.isHittable })
             XCTAssertNotNil(found, "Native preference is unreachable: \(names[0])")

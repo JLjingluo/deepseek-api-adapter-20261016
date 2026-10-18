@@ -46,10 +46,10 @@ static NSString *parameter(NSString *header,NSString *key) {
 - (NSData *)data:(NSString *)identifier { NSURL *url=[self URL:identifier suffix:@".bin"]; return url ? [NSData dataWithContentsOfURL:url] : nil; }
 - (NSDictionary *)importRequest:(NSURLRequest *)request error:(NSError **)error {
     id upload=[NSURLProtocol propertyForKey:@"DSAPI.UploadData" inRequest:request];
-    id file=[NSURLProtocol propertyForKey:@"DSAPI.UploadFileURL" inRequest:request];
+    id fileSource=[NSURLProtocol propertyForKey:@"DSAPI.UploadFileURL" inRequest:request];
     NSData *body=[upload isKindOfClass:NSData.class] ? upload : nil;
     NSInputStream *bodyStream=nil;
-    if (!body && [file isKindOfClass:NSURL.class] && [(NSURL *)file isFileURL]) bodyStream=[NSInputStream inputStreamWithURL:file];
+    if (!body && [fileSource isKindOfClass:NSURL.class] && [(NSURL *)fileSource isFileURL]) bodyStream=[NSInputStream inputStreamWithURL:fileSource];
     if (!body && !bodyStream) { body=request.HTTPBody; bodyStream=request.HTTPBodyStream; }
     if (!body && bodyStream) {
         NSInputStream *stream=bodyStream; [stream open];
