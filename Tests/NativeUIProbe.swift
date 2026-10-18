@@ -61,7 +61,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(choice.waitForExistence(timeout:25)); capture(app,"automatic-model-list"); choice.tap()
         let model=app.textFields["Model"].firstMatch
         XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
-        model.tap(); model.typeText("-manual\n"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
+        model.tap(); dismissKeyboardHelp(app); model.typeText("-manual\n"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
         dismissKeyboardHelp(app)
         let effort=app.cells["DSAPI.Effort"].firstMatch; let effortTitle=effort.staticTexts.firstMatch; XCTAssertTrue(reveal(app,effortTitle)); effortTitle.tap()
         let maxOption=app.buttons["Max"].firstMatch
@@ -91,7 +91,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(history.waitForExistence(timeout:15)); history.tap()
         let oldReply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","earlier answer","earlier answer")).firstMatch
         XCTAssertTrue(oldReply.waitForExistence(timeout:15)); capture(app,"original-history-in-api-mode")
-        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY }); input.tap(); input.typeText("API cloud continuation test"); dismissKeyboardHelp(app)
+        let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY }); enterPrompt("API cloud continuation test",into:input,in:app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout:35)); capture(app,"cloud-history-api-continuation")
@@ -111,7 +111,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:25),"Local guest entry did not reach the original conversation UI")
         #if DSAPI_GUEST_ORIGINAL
         let guestInput=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
-        guestInput.tap(); guestInput.typeText("guest sign in prompt test"); dismissKeyboardHelp(app)
+        enterPrompt("guest sign in prompt test",into:guestInput,in:app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:15)); capture(app,"guest-sign-in-or-api")
         let useAPI=alert.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Use API","使用 API")).firstMatch
@@ -128,7 +128,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:20))
         #endif
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
-        input.tap(); input.typeText("API integration test"); dismissKeyboardHelp(app)
+        enterPrompt("API integration test",into:input,in:app)
         app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout:35),"Guest API chat did not render without an account fixture")
@@ -268,6 +268,16 @@ final class CaptureTests: XCTestCase {
             start.press(forDuration:0.05,thenDragTo:end)
         }
         return element.exists && element.isHittable
+    }
+
+    private func enterPrompt(_ text:String,into input:XCUIElement,in app:XCUIApplication) {
+        input.tap(); _ = dismissKeyboardHelp(app)
+        input.typeText(text)
+        let consumedByHelp=dismissKeyboardHelp(app)
+        if consumedByHelp && ((input.value as? String) ?? "").isEmpty {
+            input.tap(); input.typeText(text)
+        }
+        XCTAssertTrue(((input.value as? String) ?? "").contains(text),"The native composer did not retain the typed prompt")
     }
 
     @discardableResult private func dismissKeyboardHelp(_ app:XCUIApplication) -> Bool {
