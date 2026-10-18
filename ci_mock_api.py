@@ -71,7 +71,7 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             self.send_header('Connection', 'close')
             self.end_headers()
             try:
-                fragments=['取消前片段', '取消后不应出现'] if cancel_case else ['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']
+                fragments=['取消前片段：这段文字用于检查停止生成后已显示内容的保留，以及长句朗读时播放状态和停止按钮的实际变化。', '取消后不应出现'] if cancel_case else ['首段流式回复', '：流式输出正常。', '\n', '这条消息来自本地模拟接口。']
                 for index, text in enumerate(fragments):
                     event = {'id': 'ci-mock', 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]}
                     wire = ('data: '+json.dumps(event, ensure_ascii=False)+'\n\n').encode()
