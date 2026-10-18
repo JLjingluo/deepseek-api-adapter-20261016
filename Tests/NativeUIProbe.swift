@@ -104,11 +104,13 @@ final class CaptureTests: XCTestCase {
         input.tap()
         dismissKeyboardHelp(app)
         input.typeText(prompt)
+        dismissKeyboardHelp(app)
         // Set the synthetic image immediately before invoking the real native
         // paste action; typing and system clipboard inspection can race the
         // initial app fixture preparation on a cold simulator.
         if let data=Data(base64Encoded:"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC"),let image=UIImage(data:data) { UIPasteboard.general.image=image }
         input.press(forDuration:1.2)
+        dismissKeyboardHelp(app)
         let labels=["Paste","粘贴"]
         let pasteReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in
             labels.contains { app.menuItems[$0].firstMatch.exists || app.buttons[$0].firstMatch.exists }
@@ -141,7 +143,7 @@ final class CaptureTests: XCTestCase {
 
     private func dismissKeyboardHelp(_ app:XCUIApplication) {
         let hint=app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","sliding your finger")).firstMatch
-        if hint.exists {
+        if hint.waitForExistence(timeout:2) {
             let next=app.buttons["Continue"].firstMatch
             if next.exists && next.isHittable { next.tap() }
             else if app.staticTexts["Continue"].firstMatch.exists { app.staticTexts["Continue"].firstMatch.tap() }
