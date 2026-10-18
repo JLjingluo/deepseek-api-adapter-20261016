@@ -1,49 +1,32 @@
-# DeepSeek API adapter — work in progress
+# DeepSeek 2.6.2 — optional API chat
 
-Native iOS adapter modules under development for a user-supplied DeepSeek 2.6.2 application.
+This integration retains the supplied original application's sign-in, account footer,
+account management and settings. It adds an **API** button to the original Settings
+navigation bar. API mode is **off by default**; original login and chat continue using
+the original service. Enabling API chat requires saving the configuration and restarting
+the app. The existing sign-in flow is retained in both modes.
 
-**Experimental integration candidate, not a verified replacement application.**
-The modules now include runtime routing for the user-supplied 2.6.2 binary.
-Compilation and component tests do not establish that the original app starts
-or that its UI and all features behave correctly on an iPhone.
+API settings support HTTPS Base URL, API Key, model, optional reasoning model, system
+prompt, timeout, token-usage requests and a usage dashboard. API keys use the device-only
+Keychain. API conversations are local and separate from original cloud conversations;
+cloud conversations are not migrated to the API store. Start a new chat after switching.
+Switching back to original mode also requires restarting.
 
-An [experimental unsigned IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/tag/candidate-26)
-is now available for self-signing. It is **not a completed or verified 100% equivalent app**.
-Its accompanying manifest records CRC validation, 734 unchanged original archive
-entries and 29 unchanged original TEXT sections. These checks do not establish
-startup or functional correctness. The known feature gaps below still apply.
+In API mode only `/api/v0/chat/` and `/api/v0/chat_session/` are intercepted. Login,
+account operations, original settings and bootstrap requests pass through to the original
+service. Original mode keeps the original URLSession configuration and proof-of-work
+implementation. No account modules, footer rows, settings rows or existing navigation
+items are removed. The original data-management, agreement, help, logout and update
+entries remain unchanged; API usage is inside the added API page.
 
-Current modules:
+This is an unsigned **test IPA**, not a claim of 100% UI/feature equivalence or physical
+iPhone acceptance. API mode does not fully implement attachments, original search,
+cloud sharing, voice input, automatic reading or widgets. Manual API-message reading
+uses Apple voices and has not passed full active-state UI regression. Those limitations
+apply to API mode; original mode routes to the original services.
 
-- HTTPS Base URL, API key, primary/reasoning model, system prompt and timeout configuration.
-- Device-only Keychain storage for the API key.
-- Native settings controller and an experimental original-settings entry hook.
-- Streaming OpenAI-compatible HTTP client and incremental SSE parser.
-- Local conversation persistence, message branches, titles, pinning and deletion.
-- Experimental conversion of API text/reasoning deltas into the original message events.
-- Runtime validation of local identity data using the original app's decoder.
-- GitHub Actions compilation on macOS and tests of fragmentation and completion errors.
+[Download the full unsigned test IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/download/candidate-35/DeepSeek-API-2.6.2-experimental-unsigned.ipa).
 
-The source tree contains no original IPA, application resources, credentials or
-original source code. The GitHub workflow compiles the adapter and packages an
-experimental unsigned IPA from the exact encrypted input, with resource checks.
-The integration preserves the original binary's UI implementation and resources;
-it has not been visually compared on a device. It reroutes account-dependent
-startup through a local context. Original compiled account/login code remains in
-the supplied application: this is **not** physical removal of those modules.
-
-OpenAI-compatible text chat alone does not supply the original app's search,
-cloud sharing, voice calls or attachment services. Those capabilities need separate
-compatible services before equivalent behavior can be claimed. Unsupported routes
-fail explicitly instead of falling back to the original conversation service.
-
-See [ACCEPTANCE.md](ACCEPTANCE.md) for verified simulator and live API evidence.
-Physical iPhone installation, background behavior, original widgets and complete
-feature/UI equivalence remain unverified. Simulator results are not iPhone acceptance.
-
-An additional manually dispatched `simulator-probe.yml` workflow investigates
-whether a disposable copy of the original arm64 binary can run on an ARM iOS
-simulator after platform metadata conversion. Its encrypted input key is an
-Actions secret; raw application input is not part of the source tree or diagnostic
-archive. This experiment does not change the device delivery input and is not
-proof of physical-device compatibility or 100% feature/UI equivalence.
+See [ACCEPTANCE.md](ACCEPTANCE.md) for test scope. The repository contains adapter source,
+not the supplied original app or credentials. GitHub Actions compiles an arm64 library
+and repackages an exact-hash encrypted input while checking original resource preservation.
