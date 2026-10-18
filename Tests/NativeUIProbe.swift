@@ -125,6 +125,15 @@ final class CaptureTests: XCTestCase {
         let reply=app.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","流式输出正常","流式输出正常")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout:35),"Guest API chat did not render without an account fixture")
         capture(app,"guest-api-chat-without-account")
+        XCTAssertTrue(openOriginalSettings(app),"Local Guest must retain access to normal settings")
+        let account=app.staticTexts.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","Account settings","账号管理","帳號管理")).firstMatch
+        XCTAssertTrue(account.exists && account.isHittable); account.tap()
+        let prompt=app.alerts.firstMatch; XCTAssertTrue(prompt.waitForExistence(timeout:10))
+        let signIn=prompt.buttons.matching(NSPredicate(format:"label == %@ OR label == %@ OR label == %@","Sign in","登录","登入")).firstMatch
+        XCTAssertTrue(signIn.exists); signIn.tap()
+        let originalLogin=app.buttons.matching(NSPredicate(format:"label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@","Password","密码","密碼")).firstMatch
+        XCTAssertTrue(originalLogin.waitForExistence(timeout:20),"Original sign-in page was not restored after leaving local Guest")
+        capture(app,"original-login-retained-after-guest")
     }
     #endif
 
