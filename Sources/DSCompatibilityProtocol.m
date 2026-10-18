@@ -1,4 +1,5 @@
 #import "DSCompatibilityProtocol.h"
+#import "DSAPILocalization.h"
 #import "DSLocalStore.h"
 #import "DSOpenAIClient.h"
 #import <CommonCrypto/CommonDigest.h>
