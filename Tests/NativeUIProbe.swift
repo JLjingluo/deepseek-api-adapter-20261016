@@ -227,10 +227,16 @@ final class CaptureTests: XCTestCase {
             if names[0] == "Font size" {
                 let follow = app.switches.firstMatch
                 if follow.exists && (follow.value as? String) == "1" { follow.tap() }
-                let slider = app.sliders.firstMatch
-                XCTAssertTrue(slider.exists, "Native font size slider is missing")
+                let slider = nativeFontControl(app)
+                XCTAssertTrue(slider.exists && slider.isHittable, "Native font size control is missing")
                 let previous = slider.value as? String
-                slider.adjust(toNormalizedSliderPosition: 0.7)
+                if slider.elementType == .slider { slider.adjust(toNormalizedSliderPosition: 0.7) }
+                else {
+                    slider.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
+                    let changed = NSPredicate { _, _ in (slider.value as? String) != previous }
+                    expectation(for: changed, evaluatedWith: slider)
+                    waitForExpectations(timeout: 15)
+                }
                 expectedValue = slider.value as? String
                 XCTAssertNotEqual(expectedValue, previous, "Native font size did not change")
                 print("DSAPI_FONT_CHANGE=\(previous ?? "unknown")->\(slider.value as? String ?? "unknown")")
@@ -266,21 +272,33 @@ final class CaptureTests: XCTestCase {
                 capture(app, "sidebar-after-language-change")
                 if settings.exists && settings.isHittable { settings.tap() }
             } else {
-                let topNavigation = app.navigationBars.allElementsBoundByIndex.last
-                let back = topNavigation?.buttons.allElementsBoundByIndex.first(where: { $0.isHittable })
-                XCTAssertNotNil(back, "Native preference navigation button is missing")
-                back?.tap()
+                backFromNativePreference(app)
                 if let expected = expectedValue {
                     let revisit = names.map({ app.staticTexts[$0].firstMatch }).first { $0.exists && $0.isHittable }
                     XCTAssertNotNil(revisit, "Preference could not be reopened for persistence verification")
                     revisit?.tap()
-                    let control = names[0] == "Font size" ? app.sliders.firstMatch : app.switches.firstMatch
+                    let control = names[0] == "Font size" ? nativeFontControl(app) : app.switches.firstMatch
                     XCTAssertTrue(control.waitForExistence(timeout: 5))
                     XCTAssertEqual(control.value as? String, expected, "Native preference did not persist after reopening")
-                    app.navigationBars.allElementsBoundByIndex.last?.buttons.allElementsBoundByIndex.first(where: { $0.isHittable })?.tap()
+                    backFromNativePreference(app)
                 }
             }
         }
+    }
+
+    private func nativeFontControl(_ app: XCUIApplication) -> XCUIElement {
+        if let slider = app.sliders.allElementsBoundByIndex.first(where: { $0.isHittable }) { return slider }
+        let custom = app.otherElements["DSAPI.NativeFontSlider"].firstMatch
+        XCTAssertTrue(custom.waitForExistence(timeout: 15), "Original custom font control was not observed")
+        return custom
+    }
+
+    private func backFromNativePreference(_ app: XCUIApplication) {
+        guard let navigation = app.navigationBars.allElementsBoundByIndex.last else {
+            XCTFail("Native preference navigation bar is missing"); return
+        }
+        if let button = navigation.buttons.allElementsBoundByIndex.first(where: { $0.isHittable }) { button.tap() }
+        else { navigation.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap() }
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {

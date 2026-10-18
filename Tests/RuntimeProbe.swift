@@ -65,7 +65,18 @@ public func runRuntimeProbe() {
         guard views.count < 1500, depth < 40 else { return }
         var item: [String: Any] = ["class": NSStringFromClass(type(of: view)), "depth": depth,
             "hidden": view.isHidden, "frame": NSCoder.string(for: view.frame)]
-        if let label = view as? UILabel { item["text"] = label.text ?? "" }
+        if let label = view as? UILabel { item["text"] = label.text ?? ""; item["font_point_size"] = label.font.pointSize }
+        if NSStringFromClass(type(of: view)).hasSuffix(".FontSizeSlider") {
+            // Test-only observation: expose the original handle position. Native
+            // gestures still perform the change; no production control is replaced.
+            view.isAccessibilityElement = true
+            view.accessibilityIdentifier = "DSAPI.NativeFontSlider"
+            if let handle = Mirror(reflecting: view).children.first(where: { $0.label == "handleView" })?.value as? UIView,
+               view.bounds.width > 0 {
+                view.accessibilityValue = String(format: "%.4f", handle.center.x / view.bounds.width)
+                item["native_handle_position"] = handle.center.x / view.bounds.width
+            }
+        }
         if let button = view as? UIButton { item["title"] = button.title(for: .normal) ?? "" }
         if let table = view as? UITableView {
             item["delegate_class"] = table.delegate.map { NSStringFromClass(type(of: $0 as AnyObject)) } ?? "none"
