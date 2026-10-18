@@ -1,40 +1,23 @@
-# Optional API mode — test acceptance
+# Optional API mode — acceptance status
 
-The latest user instruction changes the design: preserve original login and account UI,
-and add optional API chat. Earlier candidates that removed account/settings entries
-are superseded; their native UI results do not validate this design.
+Original login, account footer and every original settings entry are retained. API chat is optional and off by default. Save a mode change and restart before sending.
 
-## Current checks
+## Component and provider checks
 
-The four component suites include SSE/configuration, persistent local conversations,
-native protocol routing and the production OpenAI-compatible client. New routing checks
-run in separate processes with API mode off and on: login, account, settings and bootstrap
-pass through in both modes; chat interception follows the startup mode; mode changes
-remain deferred until relaunch. Other component cases cover byte fragmentation, reasoning,
-history branches, regeneration including native child_message_id, HTTP errors, timeout,
-cancellation, token usage on/off and absent usage without estimates.
+Candidate 43, source `dcd628d858059dfb2f9b705e5733e36566c71b63`, passes the six component suites: streaming/configuration, local history, attachments, protocol routing, actual Foundation upload-task variants, and the OpenAI-compatible client. ARM64 compilation, package/resource preservation and ZIP integrity pass. These checks do not establish native attachment acceptance.
 
-Earlier official API live tests passed six production-client cases and nine HTTP-level
-cases. These do not establish a real logged-in, end-to-end IPA conversation.
+The official DeepSeek API passed six production-client cases (Unicode, thinking, context, cancellation, wrong key and wrong model), and separate synthetic-image HTTP/SSE tests. No user screenshot was submitted. Live-provider tests of the complete IPA image flow have not passed.
 
-Candidate **35**, commit `c90ed1e2cc180398048edab92a1670bfcbed4709`,
-[build 39115680984](https://github.com/JLjingluo/deepseek-api-adapter-20261016/actions/runs/39115680984):
-all four suites, arm64 compile and full IPA packaging passed.
+## Native simulator results
 
-## Unverified and incomplete
+Candidate 42 full native suite, probe 41: six of seven cases passed. Native streaming, cancellation, regeneration, manual reading start/stop, four repeated original/API mode changes, and settings passed. Settings coverage includes retained account/data/legal/help/logout entries, voice selection and CAF preview, font size, personalization, language restart, API configuration and usage controls. Language restart uses a disposable locale override; actual selection in iOS Settings is not proven.
 
-Physical iPhone self-sign/install, actual login, account management after login, device
-Keychain and switching modes with real cloud history have not been verified. No user
-account credentials are used in CI. The new settings page has not completed native UI
-regression. Complete original UI/function equivalence is not established.
+The image test failed: multipart bytes were retained, but the original file model reported `UPLOAD_FAILED (LOCAL_UNEXPECTED)` and no image reached the provider. Candidate 43 changes the upload response envelope; native image validation is pending. Candidate 35 is superseded and is not accepted.
 
-API mode keeps local history separately and does not migrate cloud conversations.
-Start a new API conversation after switching; existing cloud conversations can require
-returning to original mode. Attachments, original web search, cloud sharing, voice input,
-automatic reading and widgets are incomplete in API mode. Manual API-message reading
-uses Apple voices; the previous full suite's active-state assertion failed, so that
-feature is not accepted as fully verified. The original-service mode retains the original
-speech behavior and all original backend routes.
+## Remaining limits
 
-ZIP integrity, package identity and credential scanning are recorded alongside the release.
-Resource-preservation checks alone do not prove runtime/UI correctness.
+No physical iPhone, self-sign/install, genuine account login, device Keychain or switching with real cloud history has been tested. Simulator bootstrap uses a separate disposable fixture, never included in the delivered adapter.
+
+API history is local and separate from cloud history. Original web search, cloud sharing, voice input, automatic reading and widgets are not fully adapted in API mode. Manual API reading uses Apple voices. Original-service mode retains its original backend behavior. Complete original UI/function equivalence is not established.
+
+No replacement IPA is accepted for delivery while native image regression fails.
