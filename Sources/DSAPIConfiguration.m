@@ -13,6 +13,7 @@ static NSError *DSConfigError(NSString *description) {
         userInfo:@{NSLocalizedDescriptionKey:description}];
 }
 @implementation DSAPIConfiguration
+- (instancetype)init { if ((self=[super init])) _requestUsage=YES; return self; }
 + (instancetype)loadConfiguration {
     DSAPIConfiguration *config = [self new];
     NSDictionary *values = [NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey];
@@ -21,6 +22,7 @@ static NSError *DSConfigError(NSString *description) {
     config.reasoningModel = [values[@"reasoningModel"] isKindOfClass:NSString.class] ? values[@"reasoningModel"] : @"";
     config.systemPrompt = [values[@"systemPrompt"] isKindOfClass:NSString.class] ? values[@"systemPrompt"] : @"";
     config.timeout = [values[@"timeout"] isKindOfClass:NSNumber.class] ? [values[@"timeout"] doubleValue] : 180;
+    config.requestUsage = [values[@"requestUsage"] isKindOfClass:NSNumber.class] ? [values[@"requestUsage"] boolValue] : YES;
     NSMutableDictionary *query = [DSKeyQuery() mutableCopy];
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
@@ -73,7 +75,7 @@ static NSError *DSConfigError(NSString *description) {
     }
     [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,
         @"model":self.model, @"reasoningModel":self.reasoningModel ?: @"",
-        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout) } forKey:DSConfigKey];
+        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout), @"requestUsage":@(self.requestUsage) } forKey:DSConfigKey];
     return YES;
 }
 @end

@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <math.h>
 #import "DSAPISettingsViewController.h"
 #import "DSUsageViewController.h"
 #import "DSAPILocalization.h"
@@ -86,7 +87,13 @@ static void settingsCellLayout(id self,SEL selector) {
     while (parent && ![parent isKindOfClass:UITableView.class]) parent=parent.superview;
     UITableView *table=(id)parent; NSIndexPath *path=[table indexPathForCell:cell];
     if (path && objc_getAssociatedObject(cell,&cellAccessibilityKey) && removedItem(itemAt(table,path))) clearRemovedLabels(cell);
-    if (objc_getAssociatedObject(cell,&cellCornerKey)) cell.layer.cornerRadius=CGRectGetHeight(cell.bounds)/2.0;
+    if (objc_getAssociatedObject(cell,&cellCornerKey)) {
+        CGFloat radius=CGRectGetHeight(cell.bounds)/2.0;
+        CACornerMask mask=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner|kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
+        if (fabs(cell.layer.cornerRadius-radius)>0.01) cell.layer.cornerRadius=radius;
+        if (cell.layer.maskedCorners!=mask) cell.layer.maskedCorners=mask;
+        if (!cell.clipsToBounds) cell.clipsToBounds=YES;
+    }
 }
 static void headerDisplay(id self,SEL selector,UITableView *table,UIView *header,NSInteger section) {
     if (originalHeaderDisplay) originalHeaderDisplay(self,selector,table,header,section);

@@ -87,6 +87,11 @@ public func runRuntimeProbe() {
                 }
             }
         }
+        if let cell = view as? UITableViewCell {
+            item["corner_radius"] = cell.layer.cornerRadius
+            item["masked_corners"] = cell.layer.maskedCorners.rawValue
+            item["clips_to_bounds"] = cell.clipsToBounds
+        }
         if NSStringFromClass(type(of: view)).hasSuffix(".UserMessageCell") {
             let mirror = Mirror(reflecting: view)
             if let model = mirror.children.first(where: { $0.label == "currentMessage" })?.value {

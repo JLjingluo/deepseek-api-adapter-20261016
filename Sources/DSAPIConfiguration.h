@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy) NSString *reasoningModel;
 @property(nonatomic, copy) NSString *systemPrompt;
 @property(nonatomic) NSTimeInterval timeout;
+@property(nonatomic) BOOL requestUsage;
 @property(nonatomic, copy) NSString *apiKey;
 + (instancetype)loadConfiguration;
 - (BOOL)save:(NSError **)error;

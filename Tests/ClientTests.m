@@ -70,6 +70,7 @@ static void runCase(NSString *name, BOOL success) {
     config.baseURL=@"https://api.fixture.test/v1"; config.model=@"base-model";
     config.reasoningModel=@"reason-model"; config.apiKey=@"test-dummy-key";
     config.systemPrompt=@"system instruction"; config.timeout=10;
+    config.requestUsage=![name isEqual:@"usage-off"];
     DSOpenAIClient *client=[[DSOpenAIClient alloc] initWithConfiguration:config];
     __block NSUInteger terminals=0; __block NSError *failure=nil;
     NSMutableString *text=[NSMutableString string], *thought=[NSMutableString string];
@@ -93,6 +94,7 @@ static void runCase(NSString *name, BOOL success) {
         check([lastBody[@"model"] isEqual:@"reason-model"] && [lastBody[@"stream"] boolValue],@"reasoning model selection and SSE request");
         check([lastBody[@"messages"][0][@"role"] isEqual:@"system"] && [lastBody[@"messages"] count]==2,@"system instruction precedes caller history");
         check(lastBody[@"thinking"]==nil,@"generic compatible endpoint has no provider-specific parameters");
+        check(config.requestUsage ? [lastBody[@"stream_options"][@"include_usage"] boolValue] : lastBody[@"stream_options"]==nil,@"standard usage option follows the saved provider setting");
         check([lastAuthorization isEqual:@"Bearer test-dummy-key"],@"caller key sent to chosen endpoint");
     }
     [client cancel];
@@ -107,6 +109,7 @@ int main(void) {
         Method fixture=class_getClassMethod(NSURLSession.class,@selector(fixtureSessionWithConfiguration:delegate:delegateQueue:));
         method_exchangeImplementations(normal,fixture);
         runCase(@"success",YES);
+        runCase(@"usage-off",YES);
         for (NSString *name in @[@"http401",@"http429",@"http500",@"mime",@"malformed",@"truncated",@"timeout",@"cancel"])
             runCase(name,NO);
         [NSURLProtocol unregisterClass:ClientFixture.class];

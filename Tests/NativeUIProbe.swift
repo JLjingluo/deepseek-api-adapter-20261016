@@ -215,6 +215,14 @@ final class CaptureTests: XCTestCase {
                     api.tap()
                     XCTAssertTrue(app.textFields["Base URL"].waitForExistence(timeout: 5))
                     XCTAssertTrue(app.secureTextFields["API Key"].exists)
+                    let usageOption=app.switches["DSAPI.RequestUsage"].firstMatch
+                    XCTAssertTrue(usageOption.exists, "Compatible API usage option is missing")
+                    if usageOption.exists && usageOption.isHittable {
+                        XCTAssertEqual(usageOption.value as? String, "1")
+                        usageOption.tap()
+                        XCTAssertEqual(usageOption.value as? String, "0")
+                        usageOption.tap()
+                    }
                     capture(app, "api-settings")
                     return true
                 }

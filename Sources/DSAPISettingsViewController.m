@@ -43,7 +43,7 @@
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 3; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? 2 : (section == 1 ? 2 : 2);
+    return section == 2 ? 3 : 2;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     return @[DSAPILocalized(@"connection"), DSAPILocalized(@"models"), DSAPILocalized(@"advanced")][section];
@@ -52,6 +52,15 @@
     return DSAPILocalized(@[@"connectionNote",@"modelNote",@"advancedNote"][section]);
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section==2 && indexPath.row==2) {
+        UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text=DSAPILocalized(@"requestUsage"); cell.textLabel.font=self.bodyFont ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        cell.selectionStyle=UITableViewCellSelectionStyleNone;
+        UISwitch *toggle=[UISwitch new]; toggle.on=self.configuration.requestUsage;
+        toggle.accessibilityLabel=DSAPILocalized(@"requestUsage"); toggle.accessibilityIdentifier=@"DSAPI.RequestUsage";
+        [toggle addTarget:self action:@selector(usageOptionChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView=toggle; return cell;
+    }
     NSUInteger index = indexPath.section * 2 + indexPath.row;
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -66,6 +75,7 @@
         [field.heightAnchor constraintGreaterThanOrEqualToConstant:24]]];
     return cell;
 }
+- (void)usageOptionChanged:(UISwitch *)sender { self.configuration.requestUsage=sender.on; }
 - (void)cancel { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)save {
     [self.view endEditing:YES];
