@@ -83,7 +83,7 @@ static void requireSignIn(void) {
 - (void)stopLoading {}
 @end
 static char DSSkipButtonKey, DSSidebarAPIKey, DSBaseInsetKey;
-static void (*welcomeLoad)(id,SEL), (*loginLoad)(id,SEL), (*sidebarLayout)(id,SEL),(*footerLayout)(id,SEL);
+static void (*welcomeLoad)(id,SEL), (*loginLoad)(id,SEL), (*sidebarLayout)(id,SEL),(*footerLayout)(id,SEL),(*welcomeLayout)(id,SEL),(*loginLayout)(id,SEL);
 static IMP replace(Class cls,SEL selector,IMP replacement) {
     Method method=class_getInstanceMethod(cls,selector); if (!method) return NULL;
     IMP old=method_getImplementation(method);
@@ -96,6 +96,7 @@ static void finishWelcome(UIViewController *controller,NSUInteger attempt) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/10),dispatch_get_main_queue(),^{ finishWelcome(controller,attempt+1); });
 }
 static void skipLogin(id self,SEL selector) {
+    [NSUserDefaults.standardUserDefaults setObject:@"Skip action received" forKey:@"DSAPIAdapter.guestActivationStatus"];
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.skippedLogin"];
     if (DSAPIBeginGuest((__bridge void *)self)) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/10),dispatch_get_main_queue(),^{ finishWelcome(self,0); }); return;
@@ -121,6 +122,12 @@ static void installSkip(UIViewController *controller) {
             [button.topAnchor constraintEqualToAnchor:controller.view.safeAreaLayoutGuide.topAnchor constant:8], [button.heightAnchor constraintGreaterThanOrEqualToConstant:44]]];
     }
 }
+static void layoutSkip(UIViewController *controller) {
+    UIButton *button=objc_getAssociatedObject(controller,&DSSkipButtonKey);
+    if (button.superview==controller.view) [controller.view bringSubviewToFront:button];
+}
+static void welcomeDidLayout(id self,SEL selector) { if (welcomeLayout) welcomeLayout(self,selector); layoutSkip(self); }
+static void loginDidLayout(id self,SEL selector) { if (loginLayout) loginLayout(self,selector); layoutSkip(self); }
 static void welcome(id self,SEL selector) { if (welcomeLoad) welcomeLoad(self,selector); installSkip(self); }
 static void login(id self,SEL selector) { if (loginLoad) loginLoad(self,selector); installSkip(self); }
 static UIView *find(UIView *view,NSString *suffix) {
@@ -184,6 +191,8 @@ void DSInstallGuestIntegration(void) {
     for (Class cls in @[welcomeClass ?: NSObject.class,loginClass ?: NSObject.class]) if (cls!=NSObject.class) class_addMethod(cls,NSSelectorFromString(@"dsapi_skipLogin"),(IMP)skipLogin,"v@:");
     welcomeLoad=(void *)replace(welcomeClass,@selector(viewDidLoad),(IMP)welcome);
     loginLoad=(void *)replace(loginClass,@selector(viewDidLoad),(IMP)login);
+    welcomeLayout=(void *)replace(welcomeClass,@selector(viewDidLayoutSubviews),(IMP)welcomeDidLayout);
+    loginLayout=(void *)replace(loginClass,@selector(viewDidLayoutSubviews),(IMP)loginDidLayout);
     Class sidebar=NSClassFromString(@"_TtC13DeepSeek_Chat25SessionListViewController");
     class_addMethod(sidebar,NSSelectorFromString(@"dsapi_openAPI"),(IMP)openAPI,"v@:");
     sidebarLayout=(void *)replace(sidebar,@selector(viewDidLayoutSubviews),(IMP)layoutSidebar);

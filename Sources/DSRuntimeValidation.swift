@@ -102,8 +102,12 @@ public func copySettingsBackingSource(_ raw: UnsafeRawPointer?) -> UnsafeMutable
 // It exists solely to drive the original UI while offline/API mode owns routes.
 @_cdecl("DSAPIBeginGuest")
 public func beginGuest(_ raw: UnsafeRawPointer?) -> Bool {
-    guard let type=appType("DeepSeek_Chat.AppModels.User"),
-          let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPIActivateGuestUser") else { return false }
+    guard let type=appType("DeepSeek_Chat.AppModels.User") else {
+        UserDefaults.standard.set("Native User decoder unavailable",forKey:"DSAPIAdapter.guestActivationStatus"); return false
+    }
+    guard let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPIActivateGuestUser") else {
+        UserDefaults.standard.set("Native Guest bridge unavailable",forKey:"DSAPIAdapter.guestActivationStatus"); return false
+    }
     let bridge=unsafeBitCast(symbol,to:(@convention(c)(UnsafeRawPointer?) -> Bool).self)
     let data:[String:Any] = ["id":"api-guest","token":"dsapi-local-guest","email":"","mobile":"","idProfiles":[],"chat":["isMuted":0],"needBirthday":false]
     do {
@@ -114,7 +118,9 @@ public func beginGuest(_ raw: UnsafeRawPointer?) -> Bool {
             return withUnsafePointer(to:user) { bridge(UnsafeRawPointer($0)) }
         }
         return _openExistential(value,do:install)
-    } catch { return false }
+    } catch {
+        UserDefaults.standard.set("Guest decode failed: \(error)",forKey:"DSAPIAdapter.guestActivationStatus"); return false
+    }
 }
 @_cdecl("DSAPILeaveGuest")
 public func leaveGuest() -> Bool {

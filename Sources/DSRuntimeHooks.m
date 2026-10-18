@@ -102,8 +102,8 @@ __attribute__((constructor)) static void DSInstall(void) {
     Class meta = object_getClass(NSURLSession.class);
     DSOriginalSession = (void *)DSReplace(meta,@selector(sessionWithConfiguration:delegate:delegateQueue:),(IMP)DSCreateSession,"@@:@@@");
     DSBootstrapMark("url-session-hooked");
-    [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
     [NSURLProtocol registerClass:DSGuestGuardProtocol.class];
+    [NSURLProtocol registerClass:DSCompatibilityProtocol.class];
     DSBootstrapMark("protocol-registered");
     DSInstallSettingsIntegration();
     DSInstallGuestIntegration();
