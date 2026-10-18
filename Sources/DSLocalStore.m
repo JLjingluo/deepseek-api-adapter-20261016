@@ -65,6 +65,21 @@ static NSError *DSStoreError(NSString *description) {
         return time == NSOrderedSame ? [a[@"id"] compare:b[@"id"]] : time;
     }];
 }
+- (BOOL)adoptCloudOwner:(NSString *)oldOwner asOwner:(NSString *)owner error:(NSError **)error {
+    if (!oldOwner.length || !owner.length || [oldOwner isEqual:owner]) return YES;
+    NSString *claimed=_state[@"cloud_owner_aliases"][oldOwner];
+    if (claimed && ![claimed isEqual:owner]) { if (error) *error=DSStoreError(@"原账号缓存标识已属于其他账号。"); return NO; }
+    NSMutableDictionary *next=nil;
+    for (NSDictionary *session in [_state[@"sessions"] allValues]) if ([session[@"_ds_cloud_owner"] isEqual:oldOwner]) {
+        if (!next) next=[self nextState];
+        next[@"sessions"][session[@"id"]][@"_ds_cloud_owner"]=owner;
+    }
+    if (!next && claimed) return YES;
+    if (!next) next=[self nextState];
+    if (!next[@"cloud_owner_aliases"]) next[@"cloud_owner_aliases"]=[NSMutableDictionary dictionary];
+    next[@"cloud_owner_aliases"][oldOwner]=owner;
+    return [self commit:next error:error];
+}
 - (BOOL)importCloudSessions:(NSArray<NSDictionary *> *)sessions owner:(NSString *)owner error:(NSError **)error {
     NSMutableDictionary *next=[self nextState];
     for (id value in sessions) {

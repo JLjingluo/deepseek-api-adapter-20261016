@@ -5,6 +5,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithDirectory:(NSURL *)directory;
 - (nullable NSDictionary *)session:(NSString *)identifier;
 - (NSArray<NSDictionary *> *)sessions;
+- (BOOL)adoptCloudOwner:(NSString *)oldOwner asOwner:(NSString *)owner error:(NSError **)error;
 - (BOOL)importCloudSessions:(NSArray<NSDictionary *> *)sessions owner:(NSString *)owner error:(NSError **)error;
 - (BOOL)importCloudHistory:(NSDictionary *)session messages:(NSArray<NSDictionary *> *)messages owner:(NSString *)owner error:(NSError **)error;
 - (nullable NSDictionary *)createSession:(NSString *)model error:(NSError **)error;

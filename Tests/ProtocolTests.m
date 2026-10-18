@@ -5,6 +5,9 @@
 #import "DSAttachmentStore.h"
 #import <objc/runtime.h>
 #include <string.h>
+#import <CommonCrypto/CommonDigest.h>
+static NSString *identityHash(NSString *value) { NSData *data=[value dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(data.bytes,(CC_LONG)data.length,digest); NSMutableString *text=[NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [text appendFormat:@"%02x",digest[i]]; return text; }
+static void bindIdentity(NSString *identifier,NSString *token) { [NSUserDefaults.standardUserDefaults setObject:identifier forKey:@"DSAPIAdapter.currentOfficialUserID"]; [NSUserDefaults.standardUserDefaults setObject:@{@"id":identifier,@"tokenFingerprint":identityHash(token)} forKey:@"DSAPIAdapter.currentOfficialIdentity"]; }
 static NSDictionary *retryPayload;
 static BOOL configurationReadOffMain=YES;
 @interface RetryFixture : NSURLProtocol
@@ -216,13 +219,16 @@ int main(int argc,const char *argv[]) {
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==0,@"delete updates native inventory");
         cloudAuthorization=@"Bearer official-account-fixture-token";
-        [NSUserDefaults.standardUserDefaults setObject:@"fixture-owner-a" forKey:@"DSAPIAdapter.currentOfficialUserID"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialIdentity"];
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==1,@"API inventory includes original account history");
+        bindIdentity(@"fixture-owner-a",@"official-account-fixture-token");
         check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==2,@"original messages are imported before continuation");
         check(!request(@"/chat/completion",@{@"chat_session_id":@"cloud-history-fixture",@"parent_message_id":@42,@"prompt":@"continue cloud history"}).error,@"original account conversation can continue through API");
         check([retryPayload[@"messages"] count]==3 && [retryPayload[@"messages"][1][@"content"] isEqual:@"earlier answer"],@"API receives original account context");
         check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==4,@"original refresh retains locally generated API turns");
         cloudAuthorization=@"Bearer rotated-account-fixture-token";
+        bindIdentity(@"fixture-owner-a",@"rotated-account-fixture-token");
         check([payload(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}))[@"chat_messages"] count]==4,@"token rotation keeps the same account cache");
         [NSUserDefaults.standardUserDefaults setObject:@"fixture-owner-b" forKey:@"DSAPIAdapter.currentOfficialUserID"];
         check(request(@"/chat/history_messages",@{@"chat_session_id":@"cloud-history-fixture"}).error!=nil,@"another account cannot read cached cloud history");
@@ -232,7 +238,9 @@ int main(int argc,const char *argv[]) {
         payload(request(@"/chat_session/batch_update_pinned",@{@"chat_session_ids":@[@"cloud-history-fixture"],@"pinned":@YES})); check(cloudPinned,@"cloud pin reaches original service");
         cloudFail=YES; check(request(@"/chat_session/delete",@{@"chat_session_ids":@[@"cloud-history-fixture"]}).error!=nil && [DSLocalStore.shared session:@"cloud-history-fixture"]!=nil,@"failed cloud deletion preserves the local thread");
         cloudFail=NO; payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[@"cloud-history-fixture"]})); check(cloudDeleted && ![DSLocalStore.shared session:@"cloud-history-fixture"],@"confirmed cloud deletion removes local copy");
+        check(![DSLocalStore.shared adoptCloudOwner:identityHash(@"token:Bearer official-account-fixture-token") asOwner:identityHash(@"user:fixture-owner-b") error:NULL],@"a claimed token cache cannot be transferred to another account");
         cloudAuthorization=nil; [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialIdentity"];
         puts("PASS: native URLProtocol CRUD, envelopes, required status, local-only login rejection, unknown-route rejection");
     }
     return 0;

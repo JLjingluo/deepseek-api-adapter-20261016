@@ -13,6 +13,18 @@
 #define DSBootstrapMark(value) ((void)0)
 #endif
 
+#import <CommonCrypto/CommonDigest.h>
+static void DSBindOfficialIdentity(NSDictionary *user) {
+    NSString *identifier=user[@"id"], *token=user[@"token"];
+    if (![identifier isKindOfClass:NSString.class] || ![token isKindOfClass:NSString.class]) return;
+    token=[token stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([token.lowercaseString hasPrefix:@"bearer "]) token=[token substringFromIndex:7];
+    token=[token stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSData *data=[token dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes,(CC_LONG)data.length,digest);
+    NSMutableString *fingerprint=[NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [fingerprint appendFormat:@"%02x",digest[i]];
+    [NSUserDefaults.standardUserDefaults setObject:@{@"id":identifier,@"tokenFingerprint":fingerprint} forKey:@"DSAPIAdapter.currentOfficialIdentity"];
+}
 static NSData *(*DSOriginalUserData)(id,SEL,NSString *);
 static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
     NSData *data=DSOriginalUserData(self,selector,key);
@@ -21,8 +33,10 @@ static NSData *DSMigrateSyntheticUser(id self,SEL selector,NSString *key) {
         if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"api-guest"] && [user[@"token"] isEqual:@"dsapi-local-guest"]) {
             [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
             [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialIdentity"];
         } else if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isKindOfClass:NSString.class] && [user[@"token"] isKindOfClass:NSString.class] && [user[@"token"] length] && ![user[@"token"] isEqual:@"local-api-no-official-account"]) {
             [NSUserDefaults.standardUserDefaults setObject:user[@"id"] forKey:@"DSAPIAdapter.currentOfficialUserID"];
+            DSBindOfficialIdentity(user);
             [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
         }
         if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"local-api"] && [user[@"token"] isEqual:@"local-api-no-official-account"]) {
@@ -45,9 +59,11 @@ static BOOL DSWriteUser(id self,SEL selector,NSData *data,NSString *key) {
         if ([user isKindOfClass:NSDictionary.class] && [user[@"id"] isEqual:@"api-guest"] && [user[@"token"] isEqual:@"dsapi-local-guest"]) {
             [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
             [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialIdentity"];
         } else if ([user isKindOfClass:NSDictionary.class] && [user[@"token"] isKindOfClass:NSString.class] && [user[@"token"] length] && ![user[@"token"] isEqual:@"local-api-no-official-account"]) {
             [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
             if ([user[@"id"] isKindOfClass:NSString.class]) [NSUserDefaults.standardUserDefaults setObject:user[@"id"] forKey:@"DSAPIAdapter.currentOfficialUserID"];
+            DSBindOfficialIdentity(user);
         }
     }
     return written;
@@ -57,6 +73,7 @@ static void DSRemoveUser(id self,SEL selector,NSString *key) {
     if ([key isEqual:@"currentUser"]) {
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.localGuestActive"];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialIdentity"];
     }
 }
 static id (*DSOriginalSession)(id,SEL,NSURLSessionConfiguration *,id,NSOperationQueue *);

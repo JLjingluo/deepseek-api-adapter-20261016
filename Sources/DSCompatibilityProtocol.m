@@ -76,6 +76,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
 }
 - (void)fail:(NSString *)description {
     if (_stopped) return;
+    if ([self.request.URL.path hasSuffix:@"/chat/history_messages"] || [self.request.URL.path hasSuffix:@"/chat_session/fetch_page"]) [NSUserDefaults.standardUserDefaults setObject:description ?: @"history failed" forKey:@"DSAPIAdapter.lastHistorySyncError"];
     if ([self.request.URL.path hasPrefix:@"/api/v0/file/"]) [NSUserDefaults.standardUserDefaults setObject:description ?: @"upload failed" forKey:@"DSAPIAdapter.lastAttachmentError"];
     [self closeHeartbeat];
     [_upstream cancel]; _upstream = nil;
@@ -135,14 +136,24 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     }
     _cachedParameters=[values copy]; return _cachedParameters;
 }
+static NSString *DSIdentityHash(NSString *value) {
+    NSData *data=[value dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes,(CC_LONG)data.length,digest);
+    NSMutableString *result=[NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [result appendFormat:@"%02x",digest[i]]; return result;
+}
 - (NSString *)cloudOwner {
     NSString *authorization=[self.request valueForHTTPHeaderField:@"Authorization"];
-    if (DSAPIIsLocalGuest() || !authorization.length || ([authorization containsString:@"local-api-no-official-account"] || [authorization containsString:@"dsapi-local-guest"])) return nil;
-    if ([authorization.lowercaseString hasPrefix:@"bearer "] && ![[authorization substringFromIndex:7] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return nil;
+    if (DSAPIIsLocalGuest() || !authorization.length || [authorization containsString:@"local-api-no-official-account"] || [authorization containsString:@"dsapi-local-guest"]) return nil;
+    NSString *token=[authorization.lowercaseString hasPrefix:@"bearer "] ? [authorization substringFromIndex:7] : authorization;
+    token=[token stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; if (!token.length) return nil;
+    NSString *fallback=DSIdentityHash([@"token:" stringByAppendingString:authorization]);
     NSString *identity=[NSUserDefaults.standardUserDefaults stringForKey:@"DSAPIAdapter.currentOfficialUserID"];
-    NSData *bytes=[(identity.length ? [@"user:" stringByAppendingString:identity] : [@"token:" stringByAppendingString:authorization]) dataUsingEncoding:NSUTF8StringEncoding]; unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(bytes.bytes,(CC_LONG)bytes.length,digest);
-    NSMutableString *key=[NSMutableString string]; for (NSUInteger i=0;i<sizeof(digest);i++) [key appendFormat:@"%02x",digest[i]]; return key;
+    if (!identity.length) return fallback;
+    NSDictionary *binding=[NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.currentOfficialIdentity"];
+    if (binding && (![binding[@"id"] isEqual:identity] || ![binding[@"tokenFingerprint"] isEqual:DSIdentityHash(token)])) return nil;
+    NSString *owner=DSIdentityHash([@"user:" stringByAppendingString:identity]);
+    if (binding && ![DSLocalStore.shared adoptCloudOwner:fallback asOwner:owner error:NULL]) return nil;
+    return owner;
 }
 - (NSArray *)visibleSessions {
     NSString *owner=[self cloudOwner]; NSMutableArray *visible=[NSMutableArray array];
@@ -151,7 +162,9 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     return visible;
 }
 - (BOOL)canReadSession:(NSDictionary *)session {
-    return !session[@"_ds_cloud_owner"] || [session[@"_ds_cloud_owner"] isEqual:[self cloudOwner]];
+    NSString *owner=[self cloudOwner];
+    if (session[@"_ds_cloud_owner"] && session[@"id"]) session=[DSLocalStore.shared session:session[@"id"]] ?: session;
+    return !session[@"_ds_cloud_owner"] || [session[@"_ds_cloud_owner"] isEqual:owner];
 }
 - (void)cloudRequest:(NSDictionary *)parameters completion:(void (^)(NSDictionary *,NSError *))completion {
     NSMutableURLRequest *request=[self.request mutableCopy];
@@ -296,9 +309,10 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         if (!owner) { [self json:@{@"chat_sessions":[self visibleSessions],@"has_more":@NO}]; return; }
         [self cloudRequest:p completion:^(NSDictionary *cloud,NSError *failure) {
             if (failure) { [self reportCloudError:failure]; [self json:@{@"chat_sessions":[self visibleSessions],@"has_more":@NO}]; return; }
+            NSString *currentOwner=[self cloudOwner]; if (!currentOwner) { [self fail:@"登录状态已变化，请重新打开会话列表。"]; return; }
             NSArray *page=[cloud[@"chat_sessions"] isKindOfClass:NSArray.class] ? cloud[@"chat_sessions"] : nil;
             NSError *error=nil;
-            if (!page || ![store importCloudSessions:page owner:owner error:&error]) { [self fail:error.localizedDescription ?: @"原账号会话列表格式无效。"]; return; }
+            if (!page || ![store importCloudSessions:page owner:currentOwner error:&error]) { [self fail:error.localizedDescription ?: @"原账号会话列表格式无效。"]; return; }
             NSMutableDictionary *merged=[NSMutableDictionary dictionary];
             for (NSDictionary *session in page) merged[session[@"id"]]=[store session:session[@"id"]] ?: session;
             id cursor=p[@"lte_cursor"] ?: p[@"lteCursor"]; if ([cursor isKindOfClass:NSString.class]) cursor=[NSJSONSerialization JSONObjectWithData:[cursor dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
@@ -348,7 +362,8 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
                     else [self fail:failure.localizedDescription];
                 } else {
                     NSError *error=nil;
-                    if (![store importCloudSessions:@[cloud[@"chat_session"] ?: @{}] owner:[self cloudOwner] error:&error]) { [self fail:error.localizedDescription]; return; }
+                    NSString *currentOwner=[self cloudOwner]; if (!currentOwner) { [self fail:@"登录状态已变化，请重新打开该会话。"]; return; }
+                    if (![store importCloudSessions:@[cloud[@"chat_session"] ?: @{}] owner:currentOwner error:&error]) { [self fail:error.localizedDescription]; return; }
                     [self history:sid payload:cloud];
                 }
             }];

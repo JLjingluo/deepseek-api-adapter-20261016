@@ -143,6 +143,7 @@ public func runRuntimeProbe() {
         "last_route": UserDefaults.standard.string(forKey: "DSAPIAdapter.lastLocalRoute") ?? "none",
         "last_chat_request_summary": UserDefaults.standard.dictionary(forKey: "DSAPIAdapter.lastChatRequestSummary") ?? [:],
         "save_performed_off_main": UserDefaults.standard.bool(forKey: "DSAPIAdapter.probeSaveOffMain"),
+        "history_sync_error":UserDefaults.standard.string(forKey:"DSAPIAdapter.lastHistorySyncError") ?? "none",
         "guest_activation_status":UserDefaults.standard.string(forKey:"DSAPIAdapter.guestActivationStatus") ?? "not requested",
         "local_guest_active":UserDefaults.standard.bool(forKey:"DSAPIAdapter.localGuestActive"),
         "account_fixture_active": UserDefaults.standard.bool(forKey: "DSAPIAdapter.accountFixtureActive"),
