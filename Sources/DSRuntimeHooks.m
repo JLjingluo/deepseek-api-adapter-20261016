@@ -17,6 +17,7 @@ extern void DSInstallSettingsIntegration(void);
 extern void DSInstallLocalSpeechUI(void);
 
 static id DSCreateSession(id self, SEL selector, NSURLSessionConfiguration *configuration, id delegate, NSOperationQueue *queue) {
+    if (!DSAPIIsEnabled()) return DSOriginalSession(self,selector,configuration,delegate,queue);
     NSURLSessionConfiguration *copy = [configuration copy];
     NSMutableArray *classes = [NSMutableArray arrayWithObject:DSCompatibilityProtocol.class];
     for (Class cls in copy.protocolClasses ?: @[]) if (cls != DSCompatibilityProtocol.class) [classes addObject:cls];
@@ -51,7 +52,7 @@ __attribute__((constructor)) static void DSInstall(void) {
     if (DSAPIIsEnabled()) DSInstallLocalSpeechUI();
     Class pow = NSClassFromString(@"PowCalculator");
     SEL hash = NSSelectorFromString(@"solveHash256:diff:target:");
-    if (pow && class_getClassMethod(pow,hash))
+    if (DSAPIIsEnabled() && pow && class_getClassMethod(pow,hash))
         DSOriginalLocalHash = (void *)DSReplace(object_getClass(pow),hash,(IMP)DSLocalHash,"q@:@q@");
     DSBootstrapMark("constructor-complete");
 }
