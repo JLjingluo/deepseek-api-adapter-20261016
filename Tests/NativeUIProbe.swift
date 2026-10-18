@@ -220,6 +220,7 @@ final class CaptureTests: XCTestCase {
             Thread.sleep(forTimeInterval: 1)
             capture(app, "preference-" + names[0])
             print("DSAPI_PREFERENCE_\(names[0])_BEGIN\n" + String(app.debugDescription.suffix(18000)) + "\nDSAPI_PREFERENCE_END")
+            var expectedValue: String?
             if names[0] == "Font size" {
                 let follow = app.switches.firstMatch
                 if follow.exists && (follow.value as? String) == "1" { follow.tap() }
@@ -227,6 +228,8 @@ final class CaptureTests: XCTestCase {
                 XCTAssertTrue(slider.exists, "Native font size slider is missing")
                 let previous = slider.value as? String
                 slider.adjust(toNormalizedSliderPosition: 0.7)
+                expectedValue = slider.value as? String
+                XCTAssertNotEqual(expectedValue, previous, "Native font size did not change")
                 print("DSAPI_FONT_CHANGE=\(previous ?? "unknown")->\(slider.value as? String ?? "unknown")")
                 capture(app, "font-size-adjusted")
             }
@@ -236,6 +239,7 @@ final class CaptureTests: XCTestCase {
                 let previous = toggle.value as? String
                 toggle.tap()
                 XCTAssertNotEqual(toggle.value as? String, previous, "Personalization did not change")
+                expectedValue = toggle.value as? String
             }
             if names[0] == "Language" {
                 let chineseNames = ["简体中文", "中文（简体）", "Chinese, Simplified", "Chinese (Simplified)", "Simplified Chinese"]
@@ -263,6 +267,15 @@ final class CaptureTests: XCTestCase {
                 let back = topNavigation?.buttons.allElementsBoundByIndex.first(where: { $0.isHittable })
                 XCTAssertNotNil(back, "Native preference navigation button is missing")
                 back?.tap()
+                if let expected = expectedValue {
+                    let revisit = names.map({ app.staticTexts[$0].firstMatch }).first { $0.exists && $0.isHittable }
+                    XCTAssertNotNil(revisit, "Preference could not be reopened for persistence verification")
+                    revisit?.tap()
+                    let control = names[0] == "Font size" ? app.sliders.firstMatch : app.switches.firstMatch
+                    XCTAssertTrue(control.waitForExistence(timeout: 5))
+                    XCTAssertEqual(control.value as? String, expected, "Native preference did not persist after reopening")
+                    app.navigationBars.allElementsBoundByIndex.last?.buttons.allElementsBoundByIndex.first(where: { $0.isHittable })?.tap()
+                }
             }
         }
     }
