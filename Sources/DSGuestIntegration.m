@@ -26,7 +26,12 @@ static void requireSignIn(void) {
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"signInRequired") message:DSAPILocalized(@"signInNote") preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:DSOriginalLocalized(@"cancel") style:UIAlertActionStyleCancel handler:nil]];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"signIn") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            dispatch_async(dispatch_get_main_queue(),^{ if (DSAPIIsLocalGuest()) DSAPILeaveGuest(); });
+            dispatch_async(dispatch_get_main_queue(),^{
+                if (!DSAPIIsLocalGuest()) return;
+                UIViewController *presenter=top.presentingViewController;
+                if (presenter) [presenter dismissViewControllerAnimated:YES completion:^{ DSAPILeaveGuest(); }];
+                else DSAPILeaveGuest();
+            });
         }]];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"useAPI") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             dispatch_async(dispatch_get_main_queue(),^{ openAPI(nil,NULL); });
@@ -99,7 +104,13 @@ static void skipLogin(id self,SEL selector) {
     [NSUserDefaults.standardUserDefaults setObject:@"Skip action received" forKey:@"DSAPIAdapter.guestActivationStatus"];
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.skippedLogin"];
     if (DSAPIBeginGuest((__bridge void *)self)) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/10),dispatch_get_main_queue(),^{ finishWelcome(self,0); }); return;
+        UIViewController *controller=self;
+        dispatch_async(dispatch_get_main_queue(),^{
+            UIViewController *modal=controller.navigationController.presentingViewController ? controller.navigationController : controller;
+            if (modal.presentingViewController) {
+                [modal dismissViewControllerAnimated:YES completion:nil];
+            } else finishWelcome(controller,0);
+        }); return;
     }
     UIViewController *controller=self;
     if (controller.navigationController.presentingViewController) [controller.navigationController dismissViewControllerAnimated:YES completion:nil];

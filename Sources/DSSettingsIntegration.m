@@ -53,7 +53,7 @@ static UITableViewCell *apiCell(id self,SEL selector,UITableView *table,NSIndexP
     }
     UIListContentConfiguration *style=[objc_getAssociatedObject(table.delegate,&DSStyleKey) copy] ?: [cell defaultContentConfiguration];
     style.text=DSAPILocalized(@"api"); style.secondaryText=nil;
-    style.image=[UIImage systemImageNamed:@"network"]; style.imageProperties.tintColor=style.textProperties.color ?: UIColor.labelColor;
+    style.image=[UIImage systemImageNamed:@"network" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:style.textProperties.font.pointSize weight:UIImageSymbolWeightRegular]]; style.imageProperties.tintColor=style.textProperties.color ?: UIColor.labelColor;
     cell.layer.maskedCorners=kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
     cell.contentConfiguration=style;
     cell.accessibilityIdentifier=@"DSAPI.APISettings";
