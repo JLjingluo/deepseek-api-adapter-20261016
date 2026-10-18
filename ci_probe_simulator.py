@@ -393,8 +393,19 @@ def probe():
     # End the separate simctl smoke launch before XCTest takes ownership.
     # Attaching to a process launched by another client can time out even while
     # its window is alive. This preserves all app data and doesn't retry assertions.
-    stopped=run(['xcrun','simctl','terminate',device,bundle],timeout=30,check=False)
-    report['pre_xctest_termination_exit_code']=stopped.returncode
+    # Avoid a blocking simctl termination RPC on a cold simulator. Match only
+    # this device's installed app process, then stop that separate smoke launch.
+    listing=run(['ps','-axo','pid=,command='],check=False).stdout
+    stopped_pids=[]
+    for line in listing.splitlines():
+        parts=line.strip().split(None,1)
+        if len(parts)==2 and '/Devices/'+device+'/' in parts[1] and '/DeepSeek Chat.app/DeepSeek Chat' in parts[1]:
+            try:
+                os.kill(int(parts[0]),9)
+                stopped_pids.append(int(parts[0]))
+            except ProcessLookupError:
+                pass
+    report['pre_xctest_stopped_pids']=stopped_pids
     collect_ui_observations(device)
     if report.get('ui_test_exit_code')==0: report['process_alive']=True
     if adapter_enabled and runtime_report.is_file():
