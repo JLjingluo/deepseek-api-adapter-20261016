@@ -15,12 +15,15 @@ static id DSLoadLocalFixture(id cls,SEL selector) {
     return configuration;
 }
 
+static BOOL preparingFixture;
 static BOOL (*originalProbeSaveKey)(id,SEL,NSData *,NSError **);
 static BOOL DSProbeSaveKey(id self,SEL selector,NSData *data,NSError **error) {
     NSString *base=[self valueForKey:@"baseURL"];
     if ([[NSURL URLWithString:base].host isEqual:@"127.0.0.1"] && [data isEqual:[@"ci-dummy-key" dataUsingEncoding:NSUTF8StringEncoding]]) {
-        [NSUserDefaults.standardUserDefaults setBool:!NSThread.isMainThread forKey:@"DSAPIAdapter.probeSaveOffMain"];
-        [NSThread sleepForTimeInterval:0.8]; // Observe UI responsiveness during a slow security service.
+        if (!preparingFixture) {
+            [NSUserDefaults.standardUserDefaults setBool:!NSThread.isMainThread forKey:@"DSAPIAdapter.probeSaveOffMain"];
+            [NSThread sleepForTimeInterval:0.8];
+        } // Observe UI responsiveness during a slow security service.
         return YES;
     }
     return originalProbeSaveKey(self,selector,data,error);
@@ -105,7 +108,9 @@ static void DSPrepareMockConfiguration(void) {
     configuration.apiKey = @"ci-dummy-key";
     configuration.model = @"ci-mock-model";
     NSError *error = nil;
+    preparingFixture=YES;
     BOOL saved = [configuration save:&error];
+    preparingFixture=NO;
     [NSUserDefaults.standardUserDefaults setBool:saved forKey:@"DSAPIAdapter.testConfigurationSaved"];
     if (!saved) [NSUserDefaults.standardUserDefaults setObject:[NSString stringWithFormat:@"%@ (%@:%ld)", error.localizedDescription ?: @"unknown", error.domain, (long)error.code]
         forKey:@"DSAPIAdapter.testConfigurationError"];
