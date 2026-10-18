@@ -5,6 +5,40 @@
 static void check(BOOL condition, NSString *message) {
     if (!condition) { fprintf(stderr,"FAIL: %s\n",message.UTF8String); exit(1); }
 }
+@interface TransactionalConfiguration : DSAPIConfiguration
+@property(nonatomic) BOOL rejectKeychain;
+@property(nonatomic) NSUInteger keyWrites;
+@end
+@implementation TransactionalConfiguration
+- (BOOL)saveKeyData:(NSData *)data error:(NSError **)error {
+    self.keyWrites++;
+    if (self.rejectKeychain && error) *error=[NSError errorWithDomain:@"FixtureKeychain" code:1 userInfo:nil];
+    return !self.rejectKeychain;
+}
+@end
+static void configurationTransactions(void) {
+    NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+    NSString *key=@"DSAPIAdapter.configuration.v1";
+    NSDictionary *before=@{@"enabled":@NO,@"model":@"old"};
+    [defaults setObject:before forKey:key];
+    TransactionalConfiguration *config=[TransactionalConfiguration new];
+    config.baseURL=@"https://example.com/v1"; config.model=@"model"; config.reasoningModel=@"";
+    config.systemPrompt=@""; config.timeout=180; config.apiKey=@"transaction-fixture-key"; config.enabled=YES;
+    config.rejectKeychain=YES; NSError *error=nil;
+    check(![config save:&error] && error!=nil,@"failed security service reports an error");
+    check([[defaults dictionaryForKey:key] isEqual:before],@"failed key write does not partially switch service");
+    config.rejectKeychain=NO; error=nil;
+    check([config save:&error],@"successful key write commits configuration");
+    NSDictionary *saved=[defaults dictionaryForKey:key];
+    check([saved[@"enabled"] boolValue] && [saved[@"model"] isEqual:@"model"],@"mode and provider configuration commit together");
+    NSData *json=[NSJSONSerialization dataWithJSONObject:saved options:0 error:NULL];
+    check(![[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] containsString:@"transaction-fixture-key"],@"provider key never enters preferences");
+    config.enabled=NO;
+    check([[defaults dictionaryForKey:key][@"enabled"] boolValue],@"unsaved mode changes leave persisted mode unchanged");
+    config.baseURL=@"http://example.com"; NSUInteger writes=config.keyWrites;
+    check(![config save:&error] && config.keyWrites==writes,@"invalid endpoint does not touch keychain or mode");
+    [defaults removeObjectForKey:key];
+}
 static NSString *event(NSDictionary *delta, id finish) {
     NSDictionary *value = @{@"choices":@[@{@"index":@0,@"delta":delta,@"finish_reason":finish ?: NSNull.null}]};
     NSData *data = [NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
@@ -57,6 +91,7 @@ int main(void) {
         for (NSString *base in @[@"http://example.com/v1",@"https://user:secret@example.com",@"https://example.com?key=secret",@"file:///tmp/test"]) {
             configuration.baseURL = base; check([configuration completionURL:NULL] == nil,@"unsafe URL rejected");
         }
+        configurationTransactions();
         puts("PASS: stream fragmentation, terminal errors, reasoning, URL validation");
     }
     return 0;
