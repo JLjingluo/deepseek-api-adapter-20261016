@@ -142,7 +142,9 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
                 if (file) {
                     [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.lastAttachmentError"];
                     [NSUserDefaults.standardUserDefaults setObject:@{@"bytes":file[@"file_size"],@"mime":file[@"mime"]} forKey:@"DSAPIAdapter.lastAttachmentImport"];
-                    [self json:file];
+                    // Preserve the File fields for flat readers and the upload endpoint envelope.
+                    NSMutableDictionary *payload=[file mutableCopy]; payload[@"file"]=file;
+                    [self json:payload];
                 } else [self fail:error.localizedDescription ?: @"无法读取附件。"]; });
         }); return;
     }

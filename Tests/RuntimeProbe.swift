@@ -116,6 +116,9 @@ public func runRuntimeProbe() {
                     var state:[String:String]=[:]
                     for child in Mirror(reflecting:model).children where ["_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
                         state[child.label ?? "?"]=String(reflecting:child.value)
+                        if child.label == "_status" {
+                            var output=""; dump(child.value,to:&output,maxDepth:5,maxItems:35); state["status_detail"]=output
+                        }
                     }
                     item["native_file_state"]=state
                 }
