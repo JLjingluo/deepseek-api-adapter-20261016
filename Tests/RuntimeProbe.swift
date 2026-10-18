@@ -12,7 +12,7 @@ public func runRuntimeProbe() {
         "status": "FINISHED", "quasi_status": "FINISHED", "thinking_enabled": false,
         "ban_edit": false, "ban_regenerate": false, "tips": [], "conversation_mode": "CHAT",
         "search_enabled": false, "search_triggered": false, "extra_search_providers": []]
-    let file: [String:Any] = ["id":"api-file-probe","file_name":"red.png","file_size":75,"inserted_at":1_760_000_000,"updated_at":1_760_000_000,"from_share":false,"status":"SUCCESS","token_usage":0,"is_image":true,"audit_result":"pass","signed_path":"https://chat.deepseek.com/api/v0/file/local/api-file-probe"]
+    let file: [String:Any] = ["id":"api-file-probe","file_name":"red.png","file_size":75,"inserted_at":1_760_000_000,"updated_at":1_760_000_000,"from_share":false,"status":"SUCCESS","token_usage":0,"is_image":true,"audit_result":"pass","width":8,"height":8,"signed_path":"https://chat.deepseek.com/api/v0/file/local/api-file-probe"]
     let fixtures: [(String, Any)] = [
         ("ServerModels.File",file),
         ("ServerModels.Response.FetchFile",["files":[file]]),
@@ -105,6 +105,19 @@ public func runRuntimeProbe() {
                     item["native_client_status"] = value
                     UserDefaults.standard.set(value, forKey: "DSAPIAdapter.observedNativeClientStatus")
                 }
+            }
+        }
+        if NSStringFromClass(type(of:view)).contains("InputFileImageCell") {
+            var mirror:Mirror?=Mirror(reflecting:view)
+            while let level=mirror {
+                if let file=level.children.first(where:{$0.label=="file"})?.value {
+                    var state:[String:String]=[:]
+                    for child in Mirror(reflecting:file).children where ["_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
+                        state[child.label ?? "?"]=String(reflecting:child.value)
+                    }
+                    item["native_file_state"]=state
+                }
+                mirror=level.superclassMirror
             }
         }
         views.append(item)

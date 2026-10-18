@@ -1,6 +1,7 @@
 #import "DSAttachmentStore.h"
 #import <TargetConditionals.h>
 #include <string.h>
+#import <ImageIO/ImageIO.h>
 static const NSUInteger DSFileLimit=20*1024*1024;
 static NSError *DSFileError(NSString *text) {
     return [NSError errorWithDomain:@"DSAPI.Attachments" code:1 userInfo:@{NSLocalizedDescriptionKey:text}];
@@ -86,6 +87,14 @@ static NSString *parameter(NSString *header,NSString *key) {
     else if (fileData.length>=3 && bytes[0]==0xff && bytes[1]==0xd8 && bytes[2]==0xff) mime=@"image/jpeg";
     else if (fileData.length>=6 && (!memcmp(bytes,"GIF87a",6) || !memcmp(bytes,"GIF89a",6))) mime=@"image/gif";
     else if (fileData.length>=12 && !memcmp(bytes,"RIFF",4) && !memcmp(bytes+8,"WEBP",4)) mime=@"image/webp";
+    NSNumber *imageWidth=nil,*imageHeight=nil;
+    if (mime) {
+        CGImageSourceRef source=CGImageSourceCreateWithData((__bridge CFDataRef)fileData,(__bridge CFDictionaryRef)@{(__bridge id)kCGImageSourceShouldCache:@NO});
+        NSDictionary *properties=source ? CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source,0,NULL)) : nil;
+        if (source) CFRelease(source);
+        imageWidth=properties[(__bridge id)kCGImagePropertyPixelWidth]; imageHeight=properties[(__bridge id)kCGImagePropertyPixelHeight];
+        if (imageWidth.integerValue<=0 || imageHeight.integerValue<=0) { if (error) *error=DSFileError(@"无法读取图片尺寸，请重新选择有效图片。"); return nil; }
+    }
     NSString *text=mime ? nil : [[NSString alloc] initWithData:fileData encoding:NSUTF8StringEncoding];
     if (!mime && (!text.length || [text rangeOfString:[NSString stringWithFormat:@"%C",(unichar)0]].location!=NSNotFound)) {
         if (error) *error=DSFileError(@"API 附件目前支持 PNG、JPEG、GIF、WebP 和 UTF-8 文本；该文件没有上传到原服务器。"); return nil;
@@ -95,6 +104,7 @@ static NSString *parameter(NSString *header,NSString *key) {
     NSMutableDictionary *file=[@{@"id":identifier,@"file_name":filename,@"file_size":@(fileData.length),@"inserted_at":@(now),@"updated_at":@(now),
         @"from_share":@NO,@"status":@"SUCCESS",@"token_usage":@0,@"is_image":@(mime!=nil),@"audit_result":@"pass",@"mime":mime ?: @"text/plain",
         @"signed_path":[@"https://chat.deepseek.com/api/v0/file/local/" stringByAppendingString:identifier]} mutableCopy];
+    if (mime) { file[@"width"]=imageWidth; file[@"height"]=imageHeight; }
     NSData *json=[NSJSONSerialization dataWithJSONObject:file options:0 error:error]; if (!json) return nil;
     NSDataWritingOptions options=NSDataWritingAtomic;
 #if TARGET_OS_IOS

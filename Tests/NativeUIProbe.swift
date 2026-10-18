@@ -124,7 +124,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
         let send=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch
         let ready=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in send.exists && send.isHittable && send.isEnabled },object:app)
-        let canSend=XCTWaiter.wait(for:[ready],timeout:15)==.completed
+        let canSend=XCTWaiter.wait(for:[ready],timeout:15) == .completed
         if !canSend { capture(app,"native-upload-not-ready"); print("DSAPI_IMAGE_UPLOAD_NOT_READY\n"+app.debugDescription) }
         XCTAssertTrue(canSend,"Original image upload did not finish and enable Send")
         send.tap()
