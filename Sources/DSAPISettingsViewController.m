@@ -34,7 +34,7 @@
 }
 @end
 
-@interface DSAPISettingsViewController () <NSURLSessionTaskDelegate>
+@interface DSAPISettingsViewController () <NSURLSessionTaskDelegate, UITextFieldDelegate>
 @property(nonatomic, strong) DSAPIConfiguration *configuration;
 @property(nonatomic, strong) NSArray<UITextField *> *fields;
 @property(nonatomic, strong) UIFont *bodyFont;
@@ -73,6 +73,7 @@
         UITextField *field = [UITextField new];
         field.text = values[i]; field.placeholder = placeholders[i];
         field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.delegate=self; field.returnKeyType=UIReturnKeyDone;
         field.autocapitalizationType = UITextAutocapitalizationTypeNone;
         field.clearButtonMode = UITextFieldViewModeWhileEditing;
         field.secureTextEntry = i == 1;
@@ -84,7 +85,7 @@
         [fields addObject:field];
     }
     self.fields = fields;
-    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     self.fields[1].enabled=NO; self.navigationItem.rightBarButtonItem.enabled=NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
         DSAPIConfiguration *loaded=[DSAPIConfiguration loadConfiguration];
@@ -151,7 +152,9 @@
     else if (path.section==4) [self chooseEffort:[table cellForRowAtIndexPath:path]];
     else if (path.section==3 && path.row==3) { if (self.modelIDs.count) [self showModelPicker]; else [self fetchModelsShowingPicker:YES]; }
 }
+- (BOOL)textFieldShouldReturn:(UITextField *)field { [field resignFirstResponder]; return YES; }
 - (void)presentChoices:(UIAlertController *)alert cell:(UITableViewCell *)cell {
+    [self.view endEditing:YES];
     [alert addAction:[UIAlertAction actionWithTitle:DSOriginalLocalized(@"cancel") style:UIAlertActionStyleCancel handler:nil]];
     alert.popoverPresentationController.sourceView=cell ?: self.view;
     alert.popoverPresentationController.sourceRect=cell ? cell.bounds : CGRectMake(self.view.bounds.size.width/2,self.view.bounds.size.height/2,1,1);

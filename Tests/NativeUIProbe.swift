@@ -5,7 +5,7 @@ final class CaptureTests: XCTestCase {
     private func openNativeApp() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "com.deepseek.chat")
-        app.launch()
+        app.terminate(); app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         capture(app, "initial")
         // This is a fresh, disposable test installation. Accept only a known
@@ -61,7 +61,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(choice.waitForExistence(timeout:25)); capture(app,"automatic-model-list"); choice.tap()
         let model=app.textFields["Model"].firstMatch
         XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
-        model.tap(); model.typeText("-manual"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
+        model.tap(); model.typeText("-manual\n"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
         dismissKeyboardHelp(app)
         let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
         let maxOption=app.buttons["Max"].firstMatch
