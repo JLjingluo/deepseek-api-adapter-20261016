@@ -2,7 +2,7 @@ name: Full component regression without repackaging
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   components:
     runs-on: macos-15
@@ -14,6 +14,7 @@ jobs:
       - name: Test SSE and endpoint handling
         run: |
           mkdir -p build
+          exec > >(tee build/component-tests.log) 2>&1
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
             Sources/DSStreamDecoder.m Sources/DSAPIConfiguration.m Sources/DSAPILocalization.m Tests/StreamTests.m \
             -framework Foundation -framework Security -o build/StreamTests
@@ -41,3 +42,12 @@ jobs:
             Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ClientTests.m \
             -framework Foundation -framework Security -o build/ClientTests
           build/ClientTests
+      - name: Publish component failure details
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test -f build/component-tests.log
+          gh release create "component-failure-${GITHUB_RUN_ID}" --target "$GITHUB_SHA" --prerelease \
+            --title "Component failure diagnostics" --notes "Compiler and fixture output only; no live API key or input IPA." build/component-tests.log
