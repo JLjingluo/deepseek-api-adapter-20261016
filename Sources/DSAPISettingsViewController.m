@@ -15,7 +15,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = DSAPILocalized(@"api");
-    self.configuration = [DSAPIConfiguration loadConfiguration];
+    self.configuration = [DSAPIConfiguration loadConfigurationWithoutAPIKey];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
         target:self action:@selector(cancel)];
     self.navigationItem.leftBarButtonItem.accessibilityLabel=DSOriginalLocalized(@"cancel");
@@ -44,6 +44,15 @@
     }
     self.fields = fields;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    self.fields[1].enabled=NO; self.navigationItem.rightBarButtonItem.enabled=NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        DSAPIConfiguration *loaded=[DSAPIConfiguration loadConfiguration];
+        dispatch_async(dispatch_get_main_queue(),^{
+            self.configuration.apiKey=loaded.apiKey; self.fields[1].text=loaded.apiKey;
+            self.fields[1].enabled=YES;
+            if (!self.saving) self.navigationItem.rightBarButtonItem.enabled=YES;
+        });
+    });
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {

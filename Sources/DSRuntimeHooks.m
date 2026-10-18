@@ -33,7 +33,6 @@ extern void DSInstallSettingsIntegration(void);
 extern void DSInstallLocalSpeechUI(void);
 
 static id DSCreateSession(id self, SEL selector, NSURLSessionConfiguration *configuration, id delegate, NSOperationQueue *queue) {
-    if (!DSAPIIsEnabled()) return DSOriginalSession(self,selector,configuration,delegate,queue);
     NSURLSessionConfiguration *copy = [configuration copy];
     NSMutableArray *classes = [NSMutableArray arrayWithObject:DSCompatibilityProtocol.class];
     for (Class cls in copy.protocolClasses ?: @[]) if (cls != DSCompatibilityProtocol.class) [classes addObject:cls];

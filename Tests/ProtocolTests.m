@@ -5,6 +5,7 @@
 #import <objc/runtime.h>
 #include <string.h>
 static NSDictionary *retryPayload;
+static BOOL configurationReadOffMain=YES;
 @interface RetryFixture : NSURLProtocol
 @end
 @implementation RetryFixture
@@ -31,6 +32,7 @@ static NSDictionary *retryPayload;
 @end
 @implementation DSAPIConfiguration (RetryFixture)
 + (instancetype)retryConfiguration {
+    configurationReadOffMain &= !NSThread.isMainThread;
     DSAPIConfiguration *c=[self new]; c.baseURL=@"https://api.fixture.test/v1"; c.apiKey=@"protocol-fixture-key";
     c.model=@"fixture-model"; c.reasoningModel=@""; c.systemPrompt=@""; c.timeout=30; return c;
 }
@@ -98,10 +100,16 @@ int main(int argc,const char *argv[]) {
         if (!enabled) {
             [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@YES} forKey:@"DSAPIAdapter.configuration.v1"];
             check(!DSAPIIsEnabled(),@"mode remains stable until app relaunch");
+            check(DSAPIHasPendingModeChange() && [DSCompatibilityProtocol canInitWithRequest:chat],@"pending switch blocks original chat rather than mixing PoW verification");
+            Capture *pending=request(@"/chat/create_pow_challenge",@{});
+            check(pending.error!=nil && [pending.error.localizedDescription containsString:@"重新打开"],@"pending switch reports relaunch requirement before any original verification request");
             puts("PASS: original-service mode leaves chat, login and account routes intact"); return 0;
         }
         check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://api.example.com/v1/chat/completions"]]],@"caller API endpoint is not intercepted");
         check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/users/login"]]],@"original login endpoint remains native in API mode");
+        [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@NO} forKey:@"DSAPIAdapter.configuration.v1"];
+        check(DSAPIHasPendingModeChange() && request(@"/file/upload_file",@{}).error!=nil,@"pending switch cannot send an upload using the previous service");
+        [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@YES} forKey:@"DSAPIAdapter.configuration.v1"];
         payload(request(@"/chat_session/delete_all",@{}));
         NSDictionary *created=payload(request(@"/chat_session/create",@{@"model_type":@"default"}));
         NSString *sid=created[@"id"]; check(sid.length>0,@"session creation returns an identity");
@@ -139,6 +147,7 @@ int main(int argc,const char *argv[]) {
         check([[[DSLocalStore.shared messages:sid].lastObject objectForKey:@"parent_id"] isEqual:question],@"native regeneration keeps the original question as parent");
         NSInteger userCount=0; for (NSDictionary *message in [DSLocalStore.shared messages:sid]) if ([message[@"role"] isEqual:@"USER"]) userCount++;
         check(userCount==1,@"regeneration never creates another copy of the user question");
+        check(configurationReadOffMain,@"chat configuration and keychain reads never block the UI thread");
         payload(request(@"/chat_session/delete",@{@"chat_session_ids":@[sid]}));
         check([payload(request(@"/chat_session/fetch_page",@{}))[@"chat_sessions"] count]==0,@"delete updates native inventory");
         puts("PASS: native URLProtocol CRUD, envelopes, required status, local-only login rejection, unknown-route rejection");

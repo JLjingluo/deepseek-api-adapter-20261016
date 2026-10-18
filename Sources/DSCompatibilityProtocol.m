@@ -10,6 +10,7 @@ extern BOOL DSAPIValidateModelData(const void *,NSInteger,const char *);
 
 @implementation DSCompatibilityProtocol {
     BOOL _stopped;
+    DSAPIConfiguration *_loadedConfiguration;
     DSOpenAIClient *_upstream;
     NSString *_sessionID;
     NSNumber *_assistantID;
@@ -26,13 +27,21 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     NSString *path=request.URL.path;
     // Authentication, account settings and all original services stay native.
     // API mode owns its entire chat namespace, including unsupported chat routes.
-    return DSAPIIsEnabled() && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
+    return (DSAPIIsEnabled() || DSAPIHasPendingModeChange()) && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
         [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] &&
         ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"] || [path hasPrefix:@"/api/v0/file/"] || [path hasPrefix:@"/api/v0/guest/chat/"] || [path isEqual:@"/api/v0/guest/available"] || [path isEqual:@"/api/v0/users/create_guest_challenge"]);
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {
-    dispatch_async(dispatch_get_main_queue(), ^{ if (!self->_stopped) [self route]; });
+    NSString *path=self.request.URL.path;
+    if (!DSAPIHasPendingModeChange() && ([path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"])) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+            DSAPIConfiguration *configuration=[DSAPIConfiguration loadConfiguration];
+            dispatch_async(dispatch_get_main_queue(),^{
+                if (!self->_stopped) { self->_loadedConfiguration=configuration; [self route]; }
+            });
+        });
+    } else dispatch_async(dispatch_get_main_queue(), ^{ if (!self->_stopped) [self route]; });
 }
 - (void)stopLoading {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -122,6 +131,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
         @"has_legacy_chat_history":@NO,@"need_birthday":@NO,@"is_mainland":@NO};
 }
 - (void)route {
+    if (DSAPIHasPendingModeChange()) { [self fail:@"服务模式已保存，请关闭并重新打开应用后再发送；本次请求未发送到原服务器或 API。"]; return; }
     NSString *requestPath=self.request.URL.path;
     if ([requestPath hasSuffix:@"/file/upload_file"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
@@ -296,7 +306,7 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     [self.client URLProtocolDidFinishLoading:self];
 }
 - (void)chat:(NSDictionary *)p {
-    DSAPIConfiguration *config = [DSAPIConfiguration loadConfiguration];
+    DSAPIConfiguration *config = _loadedConfiguration;
     if (!config.apiKey.length) { [self fail:@"请先在 API 设置中填写 Base URL、API Key 和模型名。"]; return; }
     NSArray *fileIDs=[p[@"ref_file_ids"] isKindOfClass:NSArray.class] ? p[@"ref_file_ids"] : @[];
     NSArray *files=[DSAttachmentStore.shared files:fileIDs];

@@ -17,7 +17,7 @@ static NSError *DSConfigError(NSString *description) {
 @end
 @implementation DSAPIConfiguration
 - (instancetype)init { if ((self=[super init])) _requestUsage=YES; return self; }
-+ (instancetype)loadConfiguration {
++ (instancetype)loadConfigurationWithoutAPIKey {
     DSAPIConfiguration *config = [self new];
     NSDictionary *values = [NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey];
     config.baseURL = [values[@"baseURL"] isKindOfClass:NSString.class] ? values[@"baseURL"] : @"https://api.deepseek.com/v1";
@@ -27,6 +27,11 @@ static NSError *DSConfigError(NSString *description) {
     config.timeout = [values[@"timeout"] isKindOfClass:NSNumber.class] ? [values[@"timeout"] doubleValue] : 180;
     config.enabled = [values[@"enabled"] boolValue];
     config.requestUsage = [values[@"requestUsage"] isKindOfClass:NSNumber.class] ? [values[@"requestUsage"] boolValue] : YES;
+    config.apiKey=@"";
+    return config;
+}
++ (instancetype)loadConfiguration {
+    DSAPIConfiguration *config=[self loadConfigurationWithoutAPIKey];
     NSMutableDictionary *query = [DSKeyQuery() mutableCopy];
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
@@ -91,4 +96,9 @@ BOOL DSAPIIsEnabled(void) {
     static BOOL enabled; static dispatch_once_t once;
     dispatch_once(&once, ^{ enabled=[[NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey][@"enabled"] boolValue]; });
     return enabled;
+}
+
+BOOL DSAPIHasPendingModeChange(void) {
+    BOOL desired=[[NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey][@"enabled"] boolValue];
+    return desired!=DSAPIIsEnabled();
 }

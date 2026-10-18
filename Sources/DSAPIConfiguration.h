@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) BOOL enabled;
 @property(nonatomic, copy) NSString *apiKey;
 + (instancetype)loadConfiguration;
++ (instancetype)loadConfigurationWithoutAPIKey;
 - (BOOL)save:(NSError **)error;
 - (nullable NSURL *)completionURL:(NSError **)error;
 @end
@@ -17,3 +18,5 @@ NS_ASSUME_NONNULL_END
 
 /// Fixed for the lifetime of a process; changing modes requires a relaunch.
 FOUNDATION_EXPORT BOOL DSAPIIsEnabled(void);
+
+FOUNDATION_EXPORT BOOL DSAPIHasPendingModeChange(void);
