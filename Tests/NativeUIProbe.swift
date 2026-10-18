@@ -56,17 +56,17 @@ final class CaptureTests: XCTestCase {
         let automatic=app.switches["DSAPI.AutomaticModels"].firstMatch
         XCTAssertTrue(reveal(app,automatic))
         if (automatic.value as? String) != "1" { automatic.tap() }
-        let fetch=app.cells["DSAPI.FetchModels"].firstMatch; XCTAssertTrue(reveal(app,fetch)); fetch.tap()
+        let fetch=app.cells["DSAPI.FetchModels"].staticTexts.firstMatch; XCTAssertTrue(reveal(app,fetch)); fetch.tap()
         let choice=app.staticTexts["ci-mock-reasoner"].firstMatch
         XCTAssertTrue(choice.waitForExistence(timeout:25)); capture(app,"automatic-model-list"); choice.tap()
         let model=app.textFields["Model"].firstMatch
         XCTAssertTrue(reveal(app,model,up:false)); XCTAssertEqual(model.value as? String,"ci-mock-reasoner")
         model.tap(); model.typeText("-manual\n"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
         dismissKeyboardHelp(app)
-        let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
+        let effort=app.cells["DSAPI.Effort"].firstMatch; let effortTitle=effort.staticTexts.firstMatch; XCTAssertTrue(reveal(app,effortTitle)); effortTitle.tap()
         let maxOption=app.buttons["Max"].firstMatch
         XCTAssertTrue(maxOption.waitForExistence(timeout:10)); maxOption.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)
-        let provider=app.cells["DSAPI.Provider"].firstMatch; XCTAssertTrue(reveal(app,provider,up:false)); provider.tap()
+        let provider=app.cells["DSAPI.Provider"].staticTexts.firstMatch; XCTAssertTrue(reveal(app,provider,up:false)); provider.tap()
         app.buttons["OpenAI / ChatGPT"].firstMatch.tap()
         XCTAssertTrue(reveal(app,app.textFields["Base URL"])); XCTAssertEqual(app.textFields["Base URL"].value as? String,"https://api.openai.com/v1")
         XCTAssertTrue(reveal(app,app.secureTextFields["API Key"]))
@@ -119,6 +119,13 @@ final class CaptureTests: XCTestCase {
         let enabled=app.switches["DSAPI.Enabled"].firstMatch; XCTAssertTrue(enabled.waitForExistence(timeout:10)); if (enabled.value as? String) != "1" { enabled.tap() }
         app.buttons["DSAPI.Save"].tap(); let restart=app.alerts.firstMatch; XCTAssertTrue(restart.waitForExistence(timeout:10)); restart.buttons.firstMatch.tap()
         app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        // The original post-login first-use welcome can appear after local
+        // profile persistence. Accept its normal Start Chat control explicitly.
+        for label in ["Start Chat","开始聊天","开始对话","开始使用"] {
+            let start=app.staticTexts[label].firstMatch
+            if start.waitForExistence(timeout:2) && start.isHittable { start.tap(); break }
+        }
+        XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:20))
         #endif
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         input.tap(); input.typeText("API integration test"); dismissKeyboardHelp(app)

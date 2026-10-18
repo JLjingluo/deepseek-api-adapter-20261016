@@ -402,6 +402,12 @@ def probe():
     after_logs = run(['xcrun', 'simctl', 'spawn', device, 'log', 'show', '--last', '3m', '--style', 'compact',
         '--predicate', 'process == \"DeepSeek Chat\"'], timeout=60, check=False)
     (diagnostics/'application-after-ui.log').write_text(after_logs.stdout)
+    if report.get('mock_api_base_url'):
+        store_path=pathlib.Path(data_container)/'Library/Application Support/DSAPIAdapter/sessions-v1.json'
+        report['mock_store_file_exists']=store_path.is_file()
+        if store_path.is_file():
+            state=json.loads(store_path.read_text())
+            report['mock_store_summary']=[{'id':sid,'title':session.get('title'),'cloud':bool(session.get('_ds_cloud_owner')),'updated_at':session.get('updated_at'),'message_count':len(state.get('messages',{}).get(sid,[]))} for sid,session in state.get('sessions',{}).items()]
     report['result'] = 'original binary remained running; screenshots require inspection'
     if report.get('ui_test_exit_code') != 0:
         raise RuntimeError('Native UI acceptance assertions failed; see ui-test.log')
