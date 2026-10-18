@@ -4,6 +4,7 @@
 @interface DSAPISettingsViewController ()
 @property(nonatomic, strong) DSAPIConfiguration *configuration;
 @property(nonatomic, strong) NSArray<UITextField *> *fields;
+@property(nonatomic, strong) UIFont *bodyFont;
 @end
 @implementation DSAPISettingsViewController
 - (instancetype)init {
@@ -32,9 +33,9 @@
         field.clearButtonMode = UITextFieldViewModeWhileEditing;
         field.secureTextEntry = i == 1;
         field.keyboardType = i == 0 ? UIKeyboardTypeURL : (i == 5 ? UIKeyboardTypeNumberPad : UIKeyboardTypeDefault);
-        field.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        field.font = self.bodyFont ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         field.adjustsFontForContentSizeCategory = YES;
-        field.accessibilityLabel = @[@"Base URL",@"API Key",@"模型",@"思考模型",@"系统提示词",@"请求超时秒数"][i];
+        field.accessibilityLabel = @[@"Base URL",@"API Key",DSAPILocalized(@"model"),DSAPILocalized(@"thinkingModel"),DSAPILocalized(@"systemPrompt"),DSAPILocalized(@"timeout")][i];
         [fields addObject:field];
     }
     self.fields = fields;
@@ -78,12 +79,13 @@
     if (![self.configuration save:&error]) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
             message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 @end
-UIViewController *DSAPICreateSettingsController(void) {
-    return [[UINavigationController alloc] initWithRootViewController:[DSAPISettingsViewController new]];
+UIViewController *DSAPICreateSettingsController(UIFont *bodyFont) {
+    DSAPISettingsViewController *controller=[DSAPISettingsViewController new]; controller.bodyFont=bodyFont;
+    return [[UINavigationController alloc] initWithRootViewController:controller];
 }

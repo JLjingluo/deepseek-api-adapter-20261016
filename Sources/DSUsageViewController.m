@@ -3,6 +3,7 @@
 #import "DSAPILocalization.h"
 @interface DSUsageViewController : UITableViewController
 @property(nonatomic,strong) NSDictionary *snapshot;
+@property(nonatomic,strong) UIFont *bodyFont;
 @end
 @implementation DSUsageViewController
 - (void)viewDidLoad {
@@ -38,10 +39,14 @@
         cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@ · %.1fs",[formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:[record[@"timestamp"] doubleValue]]],record[@"host"] ?: @"",[record[@"duration"] doubleValue]];
         cell.detailTextLabel.numberOfLines=0;
     }
-    cell.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; cell.textLabel.adjustsFontForContentSizeCategory=YES;
+    UIFont *body=self.bodyFont ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    cell.textLabel.font=body; cell.textLabel.adjustsFontForContentSizeCategory=YES;
+    cell.detailTextLabel.font=path.section==2 ? [body fontWithSize:body.pointSize*14.0/17.0] : body;
+    cell.detailTextLabel.adjustsFontForContentSizeCategory=YES;
     return cell;
 }
 @end
-UIViewController *DSAPICreateUsageController(void) {
-    return [[UINavigationController alloc] initWithRootViewController:[[DSUsageViewController alloc] initWithStyle:UITableViewStyleInsetGrouped]];
+UIViewController *DSAPICreateUsageController(UIFont *bodyFont) {
+    DSUsageViewController *controller=[[DSUsageViewController alloc] initWithStyle:UITableViewStyleInsetGrouped]; controller.bodyFont=bodyFont;
+    return [[UINavigationController alloc] initWithRootViewController:controller];
 }

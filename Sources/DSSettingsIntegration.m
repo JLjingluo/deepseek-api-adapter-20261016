@@ -83,8 +83,20 @@ static void refreshTables(UIView *root) {
     if ([root isKindOfClass:UITableView.class]) [(UITableView *)root reloadData];
     for (UIView *view in root.subviews) refreshTables(view);
 }
+static UIFont *nativeBodyFont(UIViewController *controller) {
+    if ([controller isKindOfClass:UITableViewController.class]) {
+        UITableView *table=((UITableViewController *)controller).tableView;
+        NSArray *cells=table.visibleCells;
+        for (NSUInteger pass=0;pass<2;pass++) for (UITableViewCell *cell in cells) {
+            if (cell.hidden || (pass==0 && ![cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"])) continue;
+            NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell.contentView,labels);
+            for (UILabel *label in labels) if (label.text.length && !label.hidden && label.font) return label.font;
+        }
+    }
+    return [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+}
 static void presentAPI(id self,SEL selector) {
-    [(UIViewController *)self presentViewController:DSAPICreateSettingsController() animated:YES completion:nil];
+    [(UIViewController *)self presentViewController:DSAPICreateSettingsController(nativeBodyFont(self)) animated:YES completion:nil];
 }
 static void updateTitle(UIViewController *controller) {
     NSString *title=DSAPILocalized(@"settings");
@@ -118,7 +130,7 @@ static void profileSelect(id self,SEL selector,UITableView *table,NSIndexPath *p
     if (removedItem(item)) return;
     if (isItem(item,@"accountDataConfig")) {
         [table deselectRowAtIndexPath:path animated:YES];
-        [(UIViewController *)self presentViewController:DSAPICreateUsageController() animated:YES completion:nil]; return;
+        [(UIViewController *)self presentViewController:DSAPICreateUsageController(nativeBodyFont(self)) animated:YES completion:nil]; return;
     }
     if (isItem(item,@"aboutCheckUpdate")) {
         [table deselectRowAtIndexPath:path animated:YES];
@@ -209,6 +221,9 @@ static void footerLayout(id self,SEL selector) {
     }
     footer.isAccessibilityElement=YES; footer.accessibilityElements=@[];
     UILabel *label=[overlay viewWithTag:7401]; NSString *text=DSAPILocalized(@"settings");
+    NSMutableArray *nativeLabels=[NSMutableArray array];
+    for (UIView *view in footer.subviews) if (view!=overlay) gatherLabels(view,nativeLabels);
+    for (UILabel *native in nativeLabels) if (native.font && native.text.length) { label.font=native.font; break; }
     if (![label.text isEqual:text]) label.text=text;
     footer.accessibilityLabel=text; footer.accessibilityIdentifier=@"DSAPI.SettingsEntry";
 }
