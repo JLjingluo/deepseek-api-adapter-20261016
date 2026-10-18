@@ -6,6 +6,7 @@
 #import "DSAPISettingsViewController.h"
 extern BOOL DSAPIBeginGuest(void *controller);
 extern BOOL DSAPILeaveGuest(void);
+extern BOOL DSAPIPresentGuestConversation(void *controller);
 extern BOOL DSAPIFinishGuestWelcome(void *controller);
 extern void *DSAPIGuestFooterLabel(void *controller);
 static UIViewController *topController(void) {
@@ -106,6 +107,7 @@ static void skipLogin(id self,SEL selector) {
     if (DSAPIBeginGuest((__bridge void *)self)) {
         UIViewController *controller=self;
         dispatch_async(dispatch_get_main_queue(),^{
+            if (DSAPIPresentGuestConversation((__bridge void *)controller)) return;
             UIViewController *modal=controller.navigationController.presentingViewController ? controller.navigationController : controller;
             if (modal.presentingViewController) {
                 [modal dismissViewControllerAnimated:YES completion:nil];

@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
 #import "DSAPIConfiguration.h"
@@ -44,4 +45,19 @@ BOOL DSAPILeaveGuestContext(void *context) {
     BOOL left=((DSLeaveUser)(base+0x770d60))(context,manager);
     if (!left) [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
     return left;
+}
+
+// The normal login completion constructs RootViewController with an on-exit
+// closure, then replaces the login navigation stack. Setting the account alone
+// does not perform that navigation in this binary.
+extern void *swift_retain(void *object);
+typedef void * __attribute__((swiftcall)) (*DSRootInit)(const void *function,void *capture,void *context __attribute__((swift_context)));
+void *DSAPICreateGuestRoot(const void *function,void *capture) {
+    uintptr_t base=nativeBase();
+    Class cls=NSClassFromString(@"_TtC13DeepSeek_Chat18RootViewController");
+    if (!NSThread.isMainThread || !base || !cls || !function || *(uint32_t *)(base+0x769f30)!=0xd101c3ff) return NULL;
+    id allocated=[cls alloc];
+    void *owned=(__bridge_retained void *)allocated;
+    if (capture) swift_retain(capture);
+    return ((DSRootInit)(base+0x769f30))(function,capture,owned);
 }

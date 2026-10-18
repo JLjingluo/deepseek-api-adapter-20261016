@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import UIKit
 
 // Runtime lookup lets the installed application's own Decodable conformance
 // validate the local identity. No original application source is linked here.
@@ -157,5 +158,22 @@ public func finishGuestWelcome(_ raw:UnsafeRawPointer?) -> Bool {
           Mirror(reflecting:current).children.first != nil else { return false }
     let controller=Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
     if let action=Mirror(reflecting:controller).children.first(where:{$0.label=="onBegin"})?.value as? () -> Void { action() }
+    return true
+}
+
+@_cdecl("DSAPIPresentGuestConversation")
+public func presentGuestConversation(_ raw:UnsafeRawPointer?) -> Bool {
+    guard let raw, let symbol=dlsym(UnsafeMutableRawPointer(bitPattern:-2),"DSAPICreateGuestRoot") else { return false }
+    let controller=Unmanaged<UIViewController>.fromOpaque(raw).takeUnretainedValue()
+    guard let navigation=controller.navigationController else { return false }
+    let onExit: () -> Void = { [weak navigation, controller] in
+        DispatchQueue.main.async { navigation?.setViewControllers([controller],animated:true) }
+    }
+    let pair=unsafeBitCast(onExit,to:(UnsafeRawPointer,UnsafeMutableRawPointer?).self)
+    let create=unsafeBitCast(symbol,to:(@convention(c)(UnsafeRawPointer?,UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?).self)
+    guard let result=create(pair.0,pair.1) else { return false }
+    let root=Unmanaged<UIViewController>.fromOpaque(result).takeRetainedValue()
+    navigation.setViewControllers([root],animated:true)
+    UserDefaults.standard.set("Original conversation root installed",forKey:"DSAPIAdapter.guestActivationStatus")
     return true
 }
