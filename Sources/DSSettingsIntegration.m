@@ -14,7 +14,8 @@ static CGFloat (*originalHeight)(id,SEL,UITableView *,NSIndexPath *);
 static CGFloat (*originalHeaderHeight)(id,SEL,UITableView *,NSInteger);
 static CGFloat (*originalSectionFooterHeight)(id,SEL,UITableView *,NSInteger);
 static void (*originalHeaderDisplay)(id,SEL,UITableView *,UIView *,NSInteger);
-static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey, cellAccessibilityKey;
+static void (*originalSettingsCellLayout)(id,SEL);
+static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey, cellAccessibilityKey, cellCornerKey;
 extern void *DSAPICopySettingsBackingSource(const void *source);
 static IMP replaceMethod(Class cls,SEL selector,IMP replacement,const char *fallback) {
     if (!cls) return NULL;
@@ -70,12 +71,30 @@ static void gatherLabels(UIView *root,NSMutableArray *labels) {
     if ([root isKindOfClass:UILabel.class]) [labels addObject:root];
     for (UIView *view in root.subviews) gatherLabels(view,labels);
 }
+static void clearRemovedLabels(UITableViewCell *cell) {
+    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell,labels);
+    for (UILabel *label in labels) {
+        if (label.text.length) label.text=nil;
+        if (label.attributedText.length) label.attributedText=nil;
+        label.accessibilityLabel=nil; label.isAccessibilityElement=NO; label.accessibilityElementsHidden=YES;
+    }
+    cell.accessibilityLabel=nil; cell.accessibilityValue=nil;
+}
+static void settingsCellLayout(id self,SEL selector) {
+    if (originalSettingsCellLayout) originalSettingsCellLayout(self,selector);
+    UITableViewCell *cell=self; UIView *parent=cell.superview;
+    while (parent && ![parent isKindOfClass:UITableView.class]) parent=parent.superview;
+    UITableView *table=(id)parent; NSIndexPath *path=[table indexPathForCell:cell];
+    if (path && objc_getAssociatedObject(cell,&cellAccessibilityKey) && removedItem(itemAt(table,path))) clearRemovedLabels(cell);
+    if (objc_getAssociatedObject(cell,&cellCornerKey)) cell.layer.cornerRadius=CGRectGetHeight(cell.bounds)/2.0;
+}
 static void headerDisplay(id self,SEL selector,UITableView *table,UIView *header,NSInteger section) {
     if (originalHeaderDisplay) originalHeaderDisplay(self,selector,table,header,section);
     for (NSInteger row=0;row<[table numberOfRowsInSection:section];row++) {
         if (!isItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:section]),@"accountDataConfig")) continue;
         NSMutableArray *labels=[NSMutableArray array]; gatherLabels(header,labels);
         for (UILabel *label in labels) if (label.text.length) label.text=@"API";
+        header.accessibilityLabel=@"API";
         break;
     }
 }
@@ -148,6 +167,9 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
         cell.isAccessibilityElement=[previousAccessibility[@"element"] boolValue];
         cell.accessibilityElementsHidden=[previousAccessibility[@"cell"] boolValue];
         cell.contentView.accessibilityElementsHidden=[previousAccessibility[@"content"] boolValue];
+        for (NSArray *entry in previousAccessibility[@"children"]) {
+            UIView *view=entry[0]; view.isAccessibilityElement=[entry[1] boolValue]; view.accessibilityElementsHidden=[entry[2] boolValue];
+        }
         objc_setAssociatedObject(cell,&cellAccessibilityKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if ([cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"]) cell.accessibilityLabel=nil;
@@ -156,12 +178,36 @@ static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCe
     objc_setAssociatedObject(cell,&cellStateKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(cell,&cellOverlayKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     cell.hidden=NO;
+    NSDictionary *corners=objc_getAssociatedObject(cell,&cellCornerKey);
+    if (corners) {
+        cell.layer.cornerRadius=[corners[@"radius"] doubleValue]; cell.layer.maskedCorners=[corners[@"mask"] unsignedIntegerValue];
+        cell.clipsToBounds=[corners[@"clip"] boolValue]; objc_setAssociatedObject(cell,&cellCornerKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     if (originalDisplay) originalDisplay(self,selector,table,cell,path);
     NSString *item=itemAt(table,path); cell.hidden=removedItem(item);
     if (cell.hidden) {
+        NSMutableArray *labels=[NSMutableArray array], *states=[NSMutableArray array]; gatherLabels(cell,labels);
+        for (UILabel *label in labels) {
+            [states addObject:@[label,@(label.isAccessibilityElement),@(label.accessibilityElementsHidden)]];
+            label.text=nil; label.attributedText=nil; label.accessibilityLabel=nil;
+            label.isAccessibilityElement=NO; label.accessibilityElementsHidden=YES;
+        }
+        cell.accessibilityLabel=nil; cell.accessibilityValue=nil;
         objc_setAssociatedObject(cell,&cellAccessibilityKey,@{@"element":@(cell.isAccessibilityElement),
-            @"cell":@(cell.accessibilityElementsHidden),@"content":@(cell.contentView.accessibilityElementsHidden)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            @"cell":@(cell.accessibilityElementsHidden),@"content":@(cell.contentView.accessibilityElementsHidden),@"children":states},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         cell.isAccessibilityElement=NO; cell.accessibilityElementsHidden=YES; cell.contentView.accessibilityElementsHidden=YES;
+    } else {
+        NSInteger remaining=0; BOOL hasRemoved=NO;
+        for (NSInteger row=0;row<[table numberOfRowsInSection:path.section];row++) {
+            if (removedItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:path.section]))) hasRemoved=YES;
+            else remaining++;
+        }
+        if (hasRemoved && remaining==1) {
+            objc_setAssociatedObject(cell,&cellCornerKey,@{@"radius":@(cell.layer.cornerRadius),@"mask":@(cell.layer.maskedCorners),@"clip":@(cell.clipsToBounds)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            cell.layer.cornerRadius=CGRectGetHeight(cell.bounds)/2.0;
+            cell.layer.maskedCorners=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner|kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
+            cell.clipsToBounds=YES;
+        }
     }
     #if DSAPI_RUNTIME_DIAGNOSTICS
     NSMutableArray *observed=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.nativeSettingsItems"] mutableCopy] ?: [NSMutableArray array];
@@ -246,4 +292,6 @@ void DSInstallSettingsIntegration(void) {
     originalFooterLayout=(void *)replaceMethod(footer,@selector(layoutSubviews),(IMP)footerLayout,"v@:");
     replaceMethod(footer,@selector(accessibilityLabel),(IMP)footerAccessibilityLabel,"@@:");
     replaceMethod(footer,@selector(accessibilityElements),(IMP)footerAccessibilityElements,"@@:");
+    Class cell=NSClassFromString(@"_TtCC13DeepSeek_Chat21ProfileViewController17InsetsGroupedCell");
+    originalSettingsCellLayout=(void *)replaceMethod(cell,@selector(layoutSubviews),(IMP)settingsCellLayout,"v@:");
 }

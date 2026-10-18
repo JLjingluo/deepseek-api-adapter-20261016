@@ -89,7 +89,7 @@ final class CaptureTests: XCTestCase {
 
     private func openExistingTestChat() -> XCUIApplication {
         let app = openNativeApp()
-        if !app.buttons["DSAPI.ReadAloud"].firstMatch.exists {
+        if !app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.contains(where: { $0.isHittable }) {
             let sidebar = app.buttons["open_sidebar"].firstMatch
             XCTAssertTrue(sidebar.waitForExistence(timeout: 10))
             sidebar.tap()
@@ -133,8 +133,10 @@ final class CaptureTests: XCTestCase {
     func testNativeReadAloud() throws {
         #if DSAPI_MOCK_UI
         let app = openExistingTestChat()
-        let readAloud = app.buttons["DSAPI.ReadAloud"].firstMatch
-        XCTAssertTrue(readAloud.waitForExistence(timeout: 10), "Original read-aloud button is missing")
+        let visibleRead = NSPredicate { _, _ in app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.contains(where: { $0.isHittable }) }
+        expectation(for: visibleRead, evaluatedWith: app)
+        waitForExpectations(timeout: 15)
+        let readAloud = try XCTUnwrap(app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.first(where: { $0.isHittable }), "Original read-aloud button is missing")
         readAloud.tap()
         let speaking=app.buttons.matching(NSPredicate(format: "identifier == %@ AND (label == %@ OR label == %@)",
             "DSAPI.ReadAloud", "Stop reading", "停止朗读")).firstMatch
@@ -199,16 +201,17 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(voice.exists && voice.isHittable, "Native voice setting must be reachable")
         if voice.exists && voice.isHittable {
             voice.tap()
-            let choice = app.cells["tts-voice-picker-cell"].firstMatch
+            let picker = app.collectionViews.allElementsBoundByIndex.last(where: { $0.isHittable })
+            let choice = picker?.cells.firstMatch ?? app.cells["tts-voice-picker-cell"].firstMatch
             let opened = choice.waitForExistence(timeout: 15)
             capture(app, "original-voice-picker")
             print("DSAPI_VOICE_PICKER_BEGIN\n" + String(app.debugDescription.suffix(18000)) + "\nDSAPI_VOICE_PICKER_END")
             XCTAssertTrue(opened, "Original voice picker did not load device voices")
             if opened { choice.swipeLeft(); Thread.sleep(forTimeInterval: 1) }
-            let confirm = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Confirm", "确认")).firstMatch
+            let confirm = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label == %@", "Confirm", "确认")).firstMatch
             if confirm.exists && confirm.isHittable { confirm.tap() }
             else {
-                let close = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Close", "关闭")).firstMatch
+                let close = app.buttons.matching(NSPredicate(format: "label ==[c] %@ OR label == %@", "close", "关闭")).firstMatch
                 if close.exists && close.isHittable { close.tap() }
             }
         }
