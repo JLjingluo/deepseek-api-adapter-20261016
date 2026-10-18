@@ -304,6 +304,8 @@ final class CaptureTests: XCTestCase {
         }
         // The original voice-switched toast overlaps the Font size row and
         // consumes taps while visible. Wait for it instead of tapping through it.
+        // This native toast is intentionally absent from some AX snapshots.
+        Thread.sleep(forTimeInterval:4)
         let voiceToast=app.staticTexts.matching(NSPredicate(format:"label BEGINSWITH %@","Voice switched"))
         expectation(for:NSPredicate { _, _ in voiceToast.count==0 },evaluatedWith:app)
         waitForExpectations(timeout:10)
