@@ -7,14 +7,13 @@
 #import "DSAPILocalization.h"
 extern long long DSAPINativeSpeechMessageID(const void *view);
 static void (*originalSpeechLayout)(id,SEL);
-static char speechGestureKey, originalSpeechIconKey;
+static char speechMarkerKey, originalSpeechIconKey;
 static NSHashTable *speechViews;
 @interface DSNativeSpeaker : NSObject <AVSpeechSynthesizerDelegate>
 @property(nonatomic,strong) AVSpeechSynthesizer *synth;
 @property(nonatomic) long long messageID;
 @property(nonatomic,strong) AVSpeechUtterance *activeUtterance;
 + (instancetype)shared;
-- (void)tap:(UITapGestureRecognizer *)gesture;
 - (void)playView:(UIView *)view;
 @end
 static UIImageView *speechIcon(UIView *view) {
@@ -43,9 +42,6 @@ static void refreshSpeechIcons(void) {
     static DSNativeSpeaker *speaker; static dispatch_once_t once;
     dispatch_once(&once,^{ speaker=[DSNativeSpeaker new]; speaker.synth=[AVSpeechSynthesizer new];
         speaker.synth.usesApplicationAudioSession=NO; speaker.synth.delegate=speaker; }); return speaker;
-}
-- (void)tap:(UITapGestureRecognizer *)gesture {
-    [self playView:gesture.view];
 }
 - (void)playView:(UIView *)view {
     UIView *parent=view;
@@ -97,16 +93,15 @@ static void refreshSpeechIcons(void) {
 static void localSpeechLayout(id self,SEL selector) {
     if (originalSpeechLayout) originalSpeechLayout(self,selector);
     UIView *view=self;
-    if (!objc_getAssociatedObject(view,&speechGestureKey)) {
-        UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc] initWithTarget:DSNativeSpeaker.shared action:@selector(tap:)];
-        tap.cancelsTouchesInView=YES; view.userInteractionEnabled=YES; [view addGestureRecognizer:tap];
+    if (!objc_getAssociatedObject(view,&speechMarkerKey)) {
         view.isAccessibilityElement=YES; view.accessibilityTraits=UIAccessibilityTraitButton; view.accessibilityIdentifier=@"DSAPI.ReadAloud";
-        objc_setAssociatedObject(view,&speechGestureKey,tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view,&speechMarkerKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [speechViews addObject:view];
     }
     refreshSpeechIcons();
 }
 static BOOL activateLocalSpeech(id self,SEL selector) { [DSNativeSpeaker.shared playView:self]; return YES; }
+static void tapLocalSpeech(id self,SEL selector) { [DSNativeSpeaker.shared playView:self]; }
 void DSInstallLocalSpeechUI(void) {
     speechViews=[NSHashTable weakObjectsHashTable];
     Class cls=NSClassFromString(@"_TtC13DeepSeek_Chat13TTSButtonView");
@@ -117,4 +112,10 @@ void DSInstallLocalSpeechUI(void) {
         class_replaceMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method));
     if (!class_addMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:"))
         class_replaceMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:");
+    // The supplied DSButton installs objcOnTap as its native gesture action.
+    // Override only this subclass's action, preserving its original recognizer.
+    SEL tap=NSSelectorFromString(@"objcOnTap");
+    if (class_getInstanceMethod(cls,tap)) {
+        if (!class_addMethod(cls,tap,(IMP)tapLocalSpeech,"v@:")) class_replaceMethod(cls,tap,(IMP)tapLocalSpeech,"v@:");
+    }
 }
