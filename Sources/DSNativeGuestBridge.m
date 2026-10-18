@@ -23,15 +23,16 @@ void *DSAPINativeAccountManager(void) {
     if (!manager || object_getClass((__bridge id)manager)!=NSClassFromString(@"_TtC13DeepSeek_Chat14AccountManager")) return NULL;
     return manager;
 }
-typedef void __attribute__((swiftcall)) (*DSSetUser)(const void *,void * __attribute__((swift_context)));
-typedef BOOL __attribute__((swiftcall)) (*DSLeaveUser)(void *,void * __attribute__((swift_context)));
+typedef void __attribute__((swiftcall)) (*DSSetUser)(const void *user,void *context __attribute__((swift_context)));
+typedef BOOL __attribute__((swiftcall)) (*DSLeaveUser)(void *account,void *context __attribute__((swift_context)));
 BOOL DSAPIActivateGuestUser(const void *user) {
     if (!NSThread.isMainThread || !user) return NO;
     uintptr_t base=nativeBase(); void *manager=DSAPINativeAccountManager();
-    if (!manager || *(uint32_t *)(base+0x770a0c)!=0xa9ba6ffc) return NO;
+    if (!manager || *(uint32_t *)(base+0x770a0c)!=0xa9ba6ffc) { [NSUserDefaults.standardUserDefaults setObject:@"Native manager unavailable or unsupported binary" forKey:@"DSAPIAdapter.guestActivationStatus"]; return NO; }
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"DSAPIAdapter.localGuestActive"];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:@"DSAPIAdapter.currentOfficialUserID"];
     ((DSSetUser)(base+0x770a0c))(user,manager);
+    [NSUserDefaults.standardUserDefaults setObject:@"Native local profile transition invoked" forKey:@"DSAPIAdapter.guestActivationStatus"];
     return YES;
 }
 BOOL DSAPILeaveGuestContext(void *context) {

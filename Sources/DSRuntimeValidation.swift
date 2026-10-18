@@ -109,6 +109,7 @@ public func beginGuest(_ raw: UnsafeRawPointer?) -> Bool {
     do {
         let value=try JSONDecoder().decode(type,from:JSONSerialization.data(withJSONObject:data))
         func install<T>(_ user:T) -> Bool {
+            UserDefaults.standard.set("Guest layout: \(String(reflecting:T.self)) / \(MemoryLayout<T>.size)",forKey:"DSAPIAdapter.guestActivationStatus")
             guard MemoryLayout<T>.size>64 else { return false }
             return withUnsafePointer(to:user) { bridge(UnsafeRawPointer($0)) }
         }
