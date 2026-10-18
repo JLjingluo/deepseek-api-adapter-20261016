@@ -89,7 +89,7 @@ final class CaptureTests: XCTestCase {
 
     private func openExistingTestChat() -> XCUIApplication {
         let app = openNativeApp()
-        if !app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.contains(where: { $0.isHittable }) {
+        if !app.buttons.matching(identifier: "DSAPI.ReadAloud").allElementsBoundByIndex.contains(where: { $0.isHittable }) {
             let sidebar = app.buttons["open_sidebar"].firstMatch
             XCTAssertTrue(sidebar.waitForExistence(timeout: 10))
             sidebar.tap()
@@ -133,10 +133,10 @@ final class CaptureTests: XCTestCase {
     func testNativeReadAloud() throws {
         #if DSAPI_MOCK_UI
         let app = openExistingTestChat()
-        let visibleRead = NSPredicate { _, _ in app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.contains(where: { $0.isHittable }) }
+        let visibleRead = NSPredicate { _, _ in app.buttons.matching(identifier: "DSAPI.ReadAloud").allElementsBoundByIndex.contains(where: { $0.isHittable }) }
         expectation(for: visibleRead, evaluatedWith: app)
         waitForExpectations(timeout: 15)
-        let readAloud = try XCTUnwrap(app.buttons["DSAPI.ReadAloud"].allElementsBoundByIndex.first(where: { $0.isHittable }), "Original read-aloud button is missing")
+        let readAloud = try XCTUnwrap(app.buttons.matching(identifier: "DSAPI.ReadAloud").allElementsBoundByIndex.first(where: { $0.isHittable }), "Original read-aloud button is missing")
         readAloud.tap()
         let speaking=app.buttons.matching(NSPredicate(format: "identifier == %@ AND (label == %@ OR label == %@)",
             "DSAPI.ReadAloud", "Stop reading", "停止朗读")).firstMatch
@@ -155,10 +155,10 @@ final class CaptureTests: XCTestCase {
         let field = try XCTUnwrap(input, "Native input is missing")
         field.tap(); field.typeText("API regeneration test")
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: field.frame.maxX-20, dy: field.frame.maxY+32)).tap()
-        let visibleRegenerate = NSPredicate { _, _ in app.buttons["Regenerate"].allElementsBoundByIndex.contains { $0.isHittable } }
+        let visibleRegenerate = NSPredicate { _, _ in app.buttons.matching(identifier: "Regenerate").allElementsBoundByIndex.contains { $0.isHittable } }
         expectation(for: visibleRegenerate, evaluatedWith: app)
         waitForExpectations(timeout: 30)
-        let regenerate = try XCTUnwrap(app.buttons["Regenerate"].allElementsBoundByIndex.first { $0.isHittable })
+        let regenerate = try XCTUnwrap(app.buttons.matching(identifier: "Regenerate").allElementsBoundByIndex.first { $0.isHittable })
         capture(app, "before-native-regeneration")
         regenerate.tap()
         let stop = app.buttons["Stop"].firstMatch
@@ -167,7 +167,7 @@ final class CaptureTests: XCTestCase {
         capture(app, "native-regeneration-started")
         print("DSAPI_REGENERATION_BEGIN\n" + String(app.debugDescription.suffix(24000)) + "\nDSAPI_REGENERATION_END")
         XCTAssertTrue(started, "Original regenerate action did not start a new stream")
-        expectation(for: NSPredicate { _, _ in !app.buttons["Stop"].allElementsBoundByIndex.contains { $0.isHittable } }, evaluatedWith: app)
+        expectation(for: NSPredicate { _, _ in !app.buttons.matching(identifier: "Stop").allElementsBoundByIndex.contains { $0.isHittable } }, evaluatedWith: app)
         waitForExpectations(timeout: 30)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "流式输出正常")).firstMatch.exists)
         capture(app, "native-regeneration-finished")
