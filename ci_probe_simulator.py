@@ -175,9 +175,9 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings', 'regeneration'):
+    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching'):
         raise RuntimeError('Unknown native test focus')
-    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration'}.get(focus)
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching'}.get(focus)
     target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
@@ -323,6 +323,15 @@ def probe():
     (diagnostics/'install.txt').write_text(install.stdout)
     if install.returncode:
         raise RuntimeError('Simulator installation rejected the converted original binary')
+    startup_mode=os.environ.get('PROBE_STARTUP_MODE','original')
+    if startup_mode not in ('original','api'): raise RuntimeError('Invalid startup mode')
+    container=run(['xcrun','simctl','get_app_container',device,bundle,'data']).stdout.strip()
+    preferences=pathlib.Path(container)/'Library/Preferences'/(bundle+'.plist')
+    preferences.parent.mkdir(parents=True,exist_ok=True)
+    values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
+    values['DSAPIAdapter.configuration.v1']={'enabled':startup_mode=='api'}
+    preferences.write_bytes(plistlib.dumps(values))
+    report['startup_api_mode']=startup_mode=='api'
     launch = launch_application(device, bundle)
     report['signing_attempts'] = [{'entitlements': entitlements, 'launch_exit_code': launch.returncode}]
     if launch.returncode and not report.get('launch_timed_out'):
