@@ -87,7 +87,9 @@ static void runCase(NSString *name, BOOL success) {
     check(success ? !failure : failure!=nil,[name stringByAppendingString:@" expected outcome"]);
     if (success) {
         NSDictionary *snapshot=DSAPIUsageSnapshot();
-        check([snapshot[@"total_tokens"] longLongValue]-[usageBefore[@"total_tokens"] longLongValue]==8,@"usage-only terminal chunk records actual token counts");
+        long long tokens=[snapshot[@"total_tokens"] longLongValue]-[usageBefore[@"total_tokens"] longLongValue];
+        check(tokens==([name isEqual:@"usage-off"] ? 0 : 8),@"usage records server counts and never estimates absent counts");
+        if ([name isEqual:@"usage-off"]) check([snapshot[@"unreported_requests"] longLongValue]-[usageBefore[@"unreported_requests"] longLongValue]==1,@"successful stream without usage remains explicitly unreported");
         NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:0 error:NULL];
         check(![[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] containsString:@"test-dummy-key"],@"usage history never contains the API key");
         check([text isEqual:@"你好🌏"] && [thought isEqual:@"思考🧠"],@"native client preserves byte-fragmented text and reasoning");
