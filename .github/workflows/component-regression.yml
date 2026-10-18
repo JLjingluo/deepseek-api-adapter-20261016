@@ -15,6 +15,8 @@ jobs:
         run: python3 ci_xcode.py
       - name: Typecheck native test code with the matching simulator SDK
         run: |
+          mkdir -p build
+          exec > >(tee build/component-tests.log) 2>&1
           SIMULATOR_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
           xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
             -target arm64-apple-ios18.0-simulator \
