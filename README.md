@@ -25,7 +25,7 @@ items are removed. The original data-management, agreement, help, logout and upd
 entries remain unchanged; API usage is inside the added API page.
 
 This is an unsigned **test IPA**, not a claim of 100% UI/feature equivalence or physical
-iPhone acceptance. API mode does not fully implement attachments, original search,
+iPhone acceptance. Native API image sending has passed against the official provider. API mode does not fully implement every attachment type, original search,
 cloud sharing, voice input, automatic reading or widgets. Manual API-message reading
 uses Apple voices; native start/stop and voice-preview regression has passed in the simulator. Those limitations
 apply to API mode; original mode routes to the original services.

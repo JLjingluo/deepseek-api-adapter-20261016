@@ -1,23 +1,27 @@
 # Optional API mode — acceptance status
 
-Original login, account footer and every original settings entry are retained. API chat is optional and off by default. Save a mode change and restart before sending.
+Original login, account footer and original settings entries are retained. API chat is optional and off by default. Save a mode change and restart before sending.
 
-## Component and provider checks
+## Component and official-provider checks
 
-Candidate 43, source `dcd628d858059dfb2f9b705e5733e36566c71b63`, passes the six component suites: streaming/configuration, local history, attachments, protocol routing, actual Foundation upload-task variants, and the OpenAI-compatible client. ARM64 compilation, package/resource preservation and ZIP integrity pass. These checks do not establish native attachment acceptance.
+Candidate 48, source `2a2f7a29d5a1c2cf0bad3a02a5cd475dbffe5962`, passes six component suites: streaming/configuration, local history, attachments, protocol routing, real Foundation upload-task variants, and the OpenAI-compatible client. The protocol suite also verifies API-disabled local Guest blocking. ARM64 compilation, original resource/TEXT preservation, ZIP integrity and a scan for real credentials/test keys pass.
 
-The official DeepSeek API passed six production-client cases (Unicode, thinking, context, cancellation, wrong key and wrong model), and separate synthetic-image HTTP/SSE tests. No user screenshot was submitted. Live-provider tests of the complete IPA image flow have not passed.
+Official DeepSeek production-client tests passed eight cases: Unicode, thinking, conversation context, cancellation, wrong key, wrong model, Max reasoning and model discovery. These eight requests reported 177 tokens in total.
 
-## Native simulator results
+Packaged candidate 48 passed native live-image probe 51. A synthetic red square was attached through the original UI, uploaded through the adapter, sent to official DeepSeek (`deepseek-chat`, HTTP 200), and the expected reply was rendered. Reported usage was 1,015 tokens. No user screenshot was submitted. The decode failure was caused by a JSON number in a strict Boolean field; `is_image` now serializes as a Boolean. The temporary provider CI secret was removed after the test.
 
-Candidate 42 full native suite, probe 41: six of seven cases passed. Native streaming, cancellation, regeneration, manual reading start/stop, four repeated original/API mode changes, and settings passed. Settings coverage includes retained account/data/legal/help/logout entries, voice selection and CAF preview, font size, personalization, language restart, API configuration and usage controls. Language restart uses a disposable locale override; actual selection in iOS Settings is not proven.
+## Native simulator checks
 
-The image test failed: multipart bytes were retained, but the original file model reported `UPLOAD_FAILED (LOCAL_UNEXPECTED)` and no image reached the provider. Candidate 43 changes the upload response envelope; native image validation is pending. Candidate 35 is superseded and is not accepted.
+Earlier candidate 45 full native probe 43 passed native streaming, cancellation, regeneration, manual reading, repeated original/API mode changes and original/API settings. The original-account cloud-history fixture appeared in the native sidebar; continuation still required a test input-selector correction. Candidate 48 re-runs the complete suite, including model discovery/presets/reasoning and cloud-history continuation. Final results are pending.
 
-## Remaining limits
+Settings checks include retained account/data/legal/help/logout entries, voice selection and CAF preview, font size, personalization, language restart, API configuration and usage controls. Language restart uses a disposable locale override; actual selection inside iOS Settings is not proven.
 
-No physical iPhone, self-sign/install, genuine account login, device Keychain or switching with real cloud history has been tested. Simulator bootstrap uses a separate disposable fixture, never included in the delivered adapter.
+Candidate 48 Guest probes 49/50 failed before entering the conversation UI. Candidate 49 brings the Skip control above the original welcome content and adds action diagnostics. Guest startup with API enabled/disabled, API activation/restart, and returning to original login require native acceptance.
 
-API history is local and separate from cloud history. Original web search, cloud sharing, voice input, automatic reading and widgets are not fully adapted in API mode. Manual API reading uses Apple voices. Original-service mode retains its original backend behavior. Complete original UI/function equivalence is not established.
+## History behavior and limits
 
-No replacement IPA is accepted for delivery while native image regression fails.
+With an existing valid original-account login, API mode reads cloud conversation pages and messages through the original authenticated routes, caches them per account, and permits local API continuation. Refresh preserves local API branches. API-generated messages are not uploaded to the original cloud. An API key alone cannot access official-account history. Offline fallback uses previously cached history and reports synchronization errors. Cloud file references not present in the local attachment store remain a limitation.
+
+No physical iPhone, self-sign/install, genuine account login, device Keychain or real-account cloud history has been tested. Simulator account/backend fixtures are separate diagnostics and are not included in the delivered adapter. Original web search, cloud sharing, voice input, automatic reading and widgets are not fully adapted in API mode. Manual API reading uses Apple voices. Complete original UI/function equivalence is not established.
+
+No new replacement IPA is accepted for delivery until the pending native regressions are resolved.
