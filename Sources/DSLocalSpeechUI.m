@@ -23,12 +23,18 @@ static UIImageView *speechIcon(UIView *view) {
     }
     return nil;
 }
-static void refreshSpeechIcons(void) {
+static BOOL activeForView(UIView *view) {
+    UIView *parent=view;
+    while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
     DSNativeSpeaker *speaker=DSNativeSpeaker.shared;
+    return parent && speaker.activeUtterance && DSAPINativeSpeechMessageID((__bridge void *)parent)==speaker.messageID;
+}
+static NSString *localSpeechLabel(id self,SEL selector) {
+    return DSOriginalLocalized(activeForView(self) ? @"readAloudStopLabel" : @"readAloudStartLabel");
+}
+static void refreshSpeechIcons(void) {
     for (UIView *view in speechViews) {
-        UIView *parent=view;
-        while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
-        BOOL active=parent && speaker.synth.speaking && DSAPINativeSpeechMessageID((__bridge void *)parent)==speaker.messageID;
+        BOOL active=activeForView(view);
         UIImageView *icon=speechIcon(view);
         UIImage *original=objc_getAssociatedObject(view,&originalSpeechIconKey);
         if (!original && icon.image) { original=icon.image; objc_setAssociatedObject(view,&originalSpeechIconKey,original,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
@@ -48,7 +54,7 @@ static void refreshSpeechIcons(void) {
     while (parent && ![NSStringFromClass(parent.class) hasSuffix:@".AgentMessageView"]) parent=parent.superview;
     long long identifier=parent ? DSAPINativeSpeechMessageID((__bridge void *)parent) : 0;
     if (!identifier) { [NSUserDefaults.standardUserDefaults setObject:@"missing-message-context" forKey:@"DSAPIAdapter.speechStatus"]; return; }
-    if (self.messageID==identifier && self.synth.speaking) {
+    if (self.messageID==identifier && self.activeUtterance) {
         [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; self.messageID=0; self.activeUtterance=nil;
         [NSUserDefaults.standardUserDefaults setObject:@"stopped" forKey:@"DSAPIAdapter.speechStatus"]; refreshSpeechIcons(); return;
     }
@@ -88,7 +94,10 @@ static void refreshSpeechIcons(void) {
         [NSUserDefaults.standardUserDefaults setObject:@"finished" forKey:@"DSAPIAdapter.speechStatus"]; }
     refreshSpeechIcons();
 }
-- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didCancelSpeechUtterance:(AVSpeechUtterance *)utterance { refreshSpeechIcons(); }
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synth didCancelSpeechUtterance:(AVSpeechUtterance *)utterance {
+    if (utterance==self.activeUtterance) { self.messageID=0; self.activeUtterance=nil; }
+    refreshSpeechIcons();
+}
 @end
 static void localSpeechLayout(id self,SEL selector) {
     if (originalSpeechLayout) originalSpeechLayout(self,selector);
@@ -112,6 +121,9 @@ void DSInstallLocalSpeechUI(void) {
         class_replaceMethod(cls,@selector(layoutSubviews),(IMP)localSpeechLayout,method_getTypeEncoding(method));
     if (!class_addMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:"))
         class_replaceMethod(cls,@selector(accessibilityActivate),(IMP)activateLocalSpeech,"B@:");
+    // Keep accessibility state consistent even when the native configuration refreshes.
+    if (!class_addMethod(cls,@selector(accessibilityLabel),(IMP)localSpeechLabel,"@@:"))
+        class_replaceMethod(cls,@selector(accessibilityLabel),(IMP)localSpeechLabel,"@@:");
     // The supplied DSButton installs objcOnTap as its native gesture action.
     // Override only this subclass's action, preserving its original recognizer.
     SEL tap=NSSelectorFromString(@"objcOnTap");
