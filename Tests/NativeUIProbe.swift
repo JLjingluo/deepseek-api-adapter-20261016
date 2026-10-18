@@ -64,7 +64,8 @@ final class CaptureTests: XCTestCase {
         model.tap(); model.typeText("-manual"); dismissKeyboardHelp(app); XCTAssertTrue((model.value as? String)?.hasSuffix("-manual")==true)
         dismissKeyboardHelp(app)
         let effort=app.cells["DSAPI.Effort"].firstMatch; XCTAssertTrue(reveal(app,effort)); effort.tap()
-        app.buttons["Max"].firstMatch.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)
+        let maxOption=app.buttons["Max"].firstMatch
+        XCTAssertTrue(maxOption.waitForExistence(timeout:10)); maxOption.tap(); XCTAssertTrue(effort.staticTexts["Max"].exists)
         let provider=app.cells["DSAPI.Provider"].firstMatch; XCTAssertTrue(reveal(app,provider,up:false)); provider.tap()
         app.buttons["OpenAI / ChatGPT"].firstMatch.tap()
         XCTAssertTrue(reveal(app,app.textFields["Base URL"])); XCTAssertEqual(app.textFields["Base URL"].value as? String,"https://api.openai.com/v1")
@@ -249,9 +250,10 @@ final class CaptureTests: XCTestCase {
 
     @discardableResult private func reveal(_ app:XCUIApplication,_ element:XCUIElement,up:Bool=true) -> Bool {
         for _ in 0..<10 {
-            if element.exists && element.isHittable { return true }
-            let height=app.frame.height
             let keyboard=app.keyboards.firstMatch
+            let clearOfKeyboard = !keyboard.exists || element.frame.midY < keyboard.frame.minY-12
+            if element.exists && element.isHittable && clearOfKeyboard { return true }
+            let height=app.frame.height
             let bottom=keyboard.exists ? min(keyboard.frame.minY,height) : height
             let low=max(0.35,min(0.75,(bottom-30)/height)), high=max(0.18,low-0.30)
             let start=app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:up ? low : high))
