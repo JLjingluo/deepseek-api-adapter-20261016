@@ -15,6 +15,15 @@ jobs:
           persist-credentials: false
       - name: Select an installed Xcode matching the original SDK generation
         run: python3 ci_xcode.py
+      - name: Typecheck native test code with the matching simulator SDK
+        run: |
+          SIMULATOR_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
+            -target arm64-apple-ios18.0-simulator \
+            -F "$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks" \
+            -D DSAPI_ADAPTER_UI -D DSAPI_MOCK_UI -D DSAPI_LIVE_UI Tests/NativeUIProbe.swift
+          xcrun swiftc -typecheck -swift-version 5 -sdk "$SIMULATOR_SDK" \
+            -target arm64-apple-ios18.0-simulator Tests/RuntimeProbe.swift
       - name: Test SSE and endpoint handling
         run: |
           mkdir -p build
