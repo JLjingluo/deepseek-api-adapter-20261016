@@ -111,12 +111,15 @@ public func runRuntimeProbe() {
             var mirror:Mirror?=Mirror(reflecting:view)
             while let level=mirror {
                 if let file=level.children.first(where:{$0.label=="file"})?.value {
+                    var model:Any=file
+                    if Mirror(reflecting:model).displayStyle == .optional,let value=Mirror(reflecting:model).children.first?.value { model=value }
                     var state:[String:String]=[:]
-                    for child in Mirror(reflecting:file).children where ["_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
+                    for child in Mirror(reflecting:model).children where ["_status","lastReportErrorReason","serverStatus","contentType","uploadSuccessAt"].contains(child.label ?? "") {
                         state[child.label ?? "?"]=String(reflecting:child.value)
                     }
                     item["native_file_state"]=state
                 }
+                if let status=level.children.first(where:{$0.label=="currentImageStatus"})?.value { item["native_image_ui_status"]=String(reflecting:status) }
                 mirror=level.superclassMirror
             }
         }

@@ -101,7 +101,9 @@ final class CaptureTests: XCTestCase {
     private func runNativeImage(prompt:String,expected:String) throws {
         let app=openNativeApp()
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled })
-        input.tap(); input.typeText(prompt)
+        input.tap()
+        dismissKeyboardHelp(app)
+        input.typeText(prompt)
         // Set the synthetic image immediately before invoking the real native
         // paste action; typing and system clipboard inspection can race the
         // initial app fixture preparation on a cold simulator.
@@ -120,6 +122,8 @@ final class CaptureTests: XCTestCase {
         let allowPaste=springboard.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Allow Paste","允许粘贴")).firstMatch
         if allowPaste.exists && allowPaste.isHittable { allowPaste.tap() }
         Thread.sleep(forTimeInterval:3)
+        if allowPaste.exists && allowPaste.isHittable { allowPaste.tap() }
+        dismissKeyboardHelp(app)
         capture(app,"native-image-upload")
         XCTAssertFalse(app.staticTexts["请求未携带验证信息"].firstMatch.exists)
         let send=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch
@@ -133,6 +137,15 @@ final class CaptureTests: XCTestCase {
         if !received { capture(app,"native-image-api-failure"); print("DSAPI_IMAGE_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_IMAGE_FAILURE_END") }
         XCTAssertTrue(received,"Native image did not reach the API as an image content part")
         capture(app,"native-image-api-reply")
+    }
+
+    private func dismissKeyboardHelp(_ app:XCUIApplication) {
+        let hint=app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","sliding your finger")).firstMatch
+        if hint.exists {
+            let next=app.buttons["Continue"].firstMatch
+            if next.exists && next.isHittable { next.tap() }
+            else if app.staticTexts["Continue"].firstMatch.exists { app.staticTexts["Continue"].firstMatch.tap() }
+        }
     }
 
     private func openExistingTestChat() -> XCUIApplication {
