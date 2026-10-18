@@ -22,6 +22,7 @@ static NSError *DSConfigError(NSString *description) {
     config.reasoningModel = [values[@"reasoningModel"] isKindOfClass:NSString.class] ? values[@"reasoningModel"] : @"";
     config.systemPrompt = [values[@"systemPrompt"] isKindOfClass:NSString.class] ? values[@"systemPrompt"] : @"";
     config.timeout = [values[@"timeout"] isKindOfClass:NSNumber.class] ? [values[@"timeout"] doubleValue] : 180;
+    config.enabled = [values[@"enabled"] boolValue];
     config.requestUsage = [values[@"requestUsage"] isKindOfClass:NSNumber.class] ? [values[@"requestUsage"] boolValue] : YES;
     NSMutableDictionary *query = [DSKeyQuery() mutableCopy];
     query[(__bridge id)kSecReturnData] = @YES;
@@ -75,7 +76,13 @@ static NSError *DSConfigError(NSString *description) {
     }
     [NSUserDefaults.standardUserDefaults setObject:@{ @"baseURL":self.baseURL,
         @"model":self.model, @"reasoningModel":self.reasoningModel ?: @"",
-        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout), @"requestUsage":@(self.requestUsage) } forKey:DSConfigKey];
+        @"systemPrompt":self.systemPrompt ?: @"", @"timeout":@(self.timeout), @"requestUsage":@(self.requestUsage), @"enabled":@(self.enabled) } forKey:DSConfigKey];
     return YES;
 }
 @end
+
+BOOL DSAPIIsEnabled(void) {
+    static BOOL enabled; static dispatch_once_t once;
+    dispatch_once(&once, ^{ enabled=[[NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey][@"enabled"] boolValue]; });
+    return enabled;
+}

@@ -3,6 +3,7 @@
 #import "DSLocalStore.h"
 #import "DSAPIConfiguration.h"
 #import <objc/runtime.h>
+#include <string.h>
 static NSDictionary *retryPayload;
 @interface RetryFixture : NSURLProtocol
 @end
@@ -80,10 +81,23 @@ static NSDictionary *payload(Capture *capture) {
     check([envelope[@"code"] isEqual:@0] && [envelope[@"data"][@"biz_code"] isEqual:@0],@"native response envelope");
     return envelope[@"data"][@"biz_data"];
 }
-int main(void) {
+int main(int argc,const char *argv[]) {
     @autoreleasepool {
+        BOOL enabled=!(argc>1 && strcmp(argv[1],"--official-mode")==0);
+        [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@(enabled)} forKey:@"DSAPIAdapter.configuration.v1"];
+        for (NSString *path in @[@"/users/login",@"/users/current",@"/users/logout",@"/users/update_settings",@"/index/prepare",@"/client/settings"]) {
+            NSURL *url=[NSURL URLWithString:[@"https://chat.deepseek.com/api/v0" stringByAppendingString:path]];
+            check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:url]],@"original login/account/bootstrap/settings always pass through");
+        }
+        NSURLRequest *chat=[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/chat/completion"]];
+        check([DSCompatibilityProtocol canInitWithRequest:chat]==enabled,@"chat interception follows startup mode");
+        if (!enabled) {
+            [NSUserDefaults.standardUserDefaults setObject:@{@"enabled":@YES} forKey:@"DSAPIAdapter.configuration.v1"];
+            check(!DSAPIIsEnabled(),@"mode remains stable until app relaunch");
+            puts("PASS: original-service mode leaves chat, login and account routes intact"); return 0;
+        }
         check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://api.example.com/v1/chat/completions"]]],@"caller API endpoint is not intercepted");
-        check([DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/users/login"]]],@"original login endpoint stays local");
+        check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://chat.deepseek.com/api/v0/users/login"]]],@"original login endpoint remains native in API mode");
         payload(request(@"/chat_session/delete_all",@{}));
         NSDictionary *created=payload(request(@"/chat_session/create",@{@"model_type":@"default"}));
         NSString *sid=created[@"id"]; check(sid.length>0,@"session creation returns an identity");

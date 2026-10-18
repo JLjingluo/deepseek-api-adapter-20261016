@@ -1,136 +1,25 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#import <objc/message.h>
-#import <math.h>
 #import "DSAPISettingsViewController.h"
-#import "DSUsageViewController.h"
 #import "DSAPILocalization.h"
 
 static void (*originalLoad)(id,SEL);
 static void (*originalLayout)(id,SEL);
-static void (*originalFooterLayout)(id,SEL);
-static void (*originalSelect)(id,SEL,UITableView *,NSIndexPath *);
-static void (*originalDisplay)(id,SEL,UITableView *,UITableViewCell *,NSIndexPath *);
-static CGFloat (*originalHeight)(id,SEL,UITableView *,NSIndexPath *);
-static CGFloat (*originalHeaderHeight)(id,SEL,UITableView *,NSInteger);
-static CGFloat (*originalSectionFooterHeight)(id,SEL,UITableView *,NSInteger);
-static void (*originalHeaderDisplay)(id,SEL,UITableView *,UIView *,NSInteger);
-static void (*originalSettingsCellLayout)(id,SEL);
-static char footerOverlayKey, cellOverlayKey, cellStateKey, backingSourceKey, cellAccessibilityKey, cellCornerKey;
-extern void *DSAPICopySettingsBackingSource(const void *source);
-static IMP replaceMethod(Class cls,SEL selector,IMP replacement,const char *fallback) {
-    if (!cls) return NULL;
-    Method method=class_getInstanceMethod(cls,selector);
-    IMP prior=method ? method_getImplementation(method) : NULL;
-    const char *encoding=method ? method_getTypeEncoding(method) : fallback;
-    if (!class_addMethod(cls,selector,replacement,encoding)) class_replaceMethod(cls,selector,replacement,encoding);
-    return prior;
-}
-static BOOL isItem(NSString *item,NSString *name) {
-    return [item isEqual:name] || [item hasSuffix:[@"." stringByAppendingString:name]];
-}
-static NSString *itemAt(UITableView *table,NSIndexPath *path) {
-    id source=table.dataSource; SEL selector=NSSelectorFromString(@"itemIdentifierForIndexPath:");
-    id backing=objc_getAssociatedObject(source,&backingSourceKey);
-    if (!backing && [source respondsToSelector:selector]) backing=source;
-    if (!backing) {
-        void *result=DSAPICopySettingsBackingSource((__bridge void *)source);
-        if (result) backing=CFBridgingRelease((CFTypeRef)result);
-    }
-    if (!backing) for (NSString *key in @[@"_diffableDataSource",@"_dataSource",@"_impl",@"impl",@"dataSource"]) {
-        @try { id candidate=[source valueForKey:key]; if ([candidate respondsToSelector:selector]) { backing=candidate; break; } }
-        @catch (NSException *exception) { }
-    }
-    if (backing && backing!=source) objc_setAssociatedObject(source,&backingSourceKey,backing,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    #if DSAPI_RUNTIME_DIAGNOSTICS
-    [NSUserDefaults.standardUserDefaults setObject:@{@"source":NSStringFromClass([source class]) ?: @"none",
-        @"delegate":NSStringFromClass([table.delegate class]) ?: @"none",@"backing":backing ? NSStringFromClass([backing class]) : @"not found"}
-        forKey:@"DSAPIAdapter.nativeSettingsSource"];
-    #endif
-    return [backing respondsToSelector:selector] ? [((id (*)(id,SEL,id))objc_msgSend)(backing,selector,path) description] ?: @"" : @"";
-}
-static BOOL removedItem(NSString *item) {
-    for (NSString *name in @[@"accountManagement",@"logout",@"aboutService",@"contactUs",@"helpAndFeedback"])
-        if (isItem(item,name)) return YES;
-    return NO;
-}
-static BOOL removedSection(UITableView *table,NSInteger section) {
-    NSInteger count=[table numberOfRowsInSection:section];
-    if (!count) return NO;
-    for (NSInteger row=0;row<count;row++) if (!removedItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:section]))) return NO;
-    return YES;
-}
-static CGFloat headerHeight(id self,SEL selector,UITableView *table,NSInteger section) {
-    if (removedSection(table,section)) return CGFLOAT_MIN;
-    return originalHeaderHeight ? originalHeaderHeight(self,selector,table,section) : UITableViewAutomaticDimension;
-}
-static CGFloat sectionFooterHeight(id self,SEL selector,UITableView *table,NSInteger section) {
-    if (removedSection(table,section)) return CGFLOAT_MIN;
-    return originalSectionFooterHeight ? originalSectionFooterHeight(self,selector,table,section) : UITableViewAutomaticDimension;
-}
 static void gatherLabels(UIView *root,NSMutableArray *labels) {
     if ([root isKindOfClass:UILabel.class]) [labels addObject:root];
-    for (UIView *view in root.subviews) gatherLabels(view,labels);
-}
-static void clearRemovedLabels(UITableViewCell *cell) {
-    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell,labels);
-    for (UILabel *label in labels) {
-        if (label.text.length) label.text=nil;
-        if (label.attributedText.length) label.attributedText=nil;
-        label.accessibilityLabel=nil; label.isAccessibilityElement=NO; label.accessibilityElementsHidden=YES;
-    }
-    cell.accessibilityLabel=nil; cell.accessibilityValue=nil;
-}
-static void settingsCellLayout(id self,SEL selector) {
-    if (originalSettingsCellLayout) originalSettingsCellLayout(self,selector);
-    UITableViewCell *cell=self; UIView *parent=cell.superview;
-    while (parent && ![parent isKindOfClass:UITableView.class]) parent=parent.superview;
-    UITableView *table=(id)parent; NSIndexPath *path=[table indexPathForCell:cell];
-    if (path && objc_getAssociatedObject(cell,&cellAccessibilityKey) && removedItem(itemAt(table,path))) clearRemovedLabels(cell);
-    if (objc_getAssociatedObject(cell,&cellCornerKey)) {
-        CGFloat radius=CGRectGetHeight(cell.bounds)/2.0;
-        CACornerMask mask=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner|kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
-        if (fabs(cell.layer.cornerRadius-radius)>0.01) cell.layer.cornerRadius=radius;
-        if (cell.layer.maskedCorners!=mask) cell.layer.maskedCorners=mask;
-        if (!cell.clipsToBounds) cell.clipsToBounds=YES;
-    }
-}
-static void headerDisplay(id self,SEL selector,UITableView *table,UIView *header,NSInteger section) {
-    if (originalHeaderDisplay) originalHeaderDisplay(self,selector,table,header,section);
-    for (NSInteger row=0;row<[table numberOfRowsInSection:section];row++) {
-        if (!isItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:section]),@"accountDataConfig")) continue;
-        NSMutableArray *labels=[NSMutableArray array]; gatherLabels(header,labels);
-        for (UILabel *label in labels) if (label.text.length) label.text=@"API";
-        header.accessibilityLabel=@"API";
-        break;
-    }
-}
-static void refreshTables(UIView *root) {
-    if ([root isKindOfClass:UITableView.class]) [(UITableView *)root reloadData];
-    for (UIView *view in root.subviews) refreshTables(view);
+    for (UIView *child in root.subviews) gatherLabels(child,labels);
 }
 static UIFont *nativeBodyFont(UIViewController *controller) {
     if ([controller isKindOfClass:UITableViewController.class]) {
-        UITableView *table=((UITableViewController *)controller).tableView;
-        NSArray *cells=table.visibleCells;
-        for (NSUInteger pass=0;pass<2;pass++) for (UITableViewCell *cell in cells) {
-            if (cell.hidden || (pass==0 && ![cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"])) continue;
+        for (UITableViewCell *cell in ((UITableViewController *)controller).tableView.visibleCells) {
             NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell.contentView,labels);
-            for (UILabel *label in labels) if (label.text.length && !label.hidden && label.font) return label.font;
+            for (UILabel *label in labels) if (!label.hidden && label.text.length && label.font) return label.font;
         }
     }
     return [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
 }
 static void presentAPI(id self,SEL selector) {
     [(UIViewController *)self presentViewController:DSAPICreateSettingsController(nativeBodyFont(self)) animated:YES completion:nil];
-}
-static void updateTitle(UIViewController *controller) {
-    NSString *title=DSAPILocalized(@"settings");
-    if (![controller.title isEqual:title]) controller.title=title;
-    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(controller.navigationItem.titleView,labels);
-    for (UILabel *label in labels) if (label.text.length && ![label.text isEqual:title]) label.text=title;
-    for (UIBarButtonItem *item in controller.navigationItem.rightBarButtonItems)
-        if (item.action==NSSelectorFromString(@"dsapi_presentSettings")) item.accessibilityLabel=DSAPILocalized(@"api");
 }
 static void profileLoad(id self,SEL selector) {
     if (originalLoad) originalLoad(self,selector);
@@ -139,166 +28,26 @@ static void profileLoad(id self,SEL selector) {
     UIBarButtonItem *api=[[UIBarButtonItem alloc] initWithTitle:@"API" style:UIBarButtonItemStylePlain target:self action:NSSelectorFromString(@"dsapi_presentSettings")];
     api.accessibilityIdentifier=@"DSAPI.APISettings"; [buttons addObject:api];
     controller.navigationItem.rightBarButtonItems=buttons;
-    updateTitle(controller);
 }
 static void profileLayout(id self,SEL selector) {
     if (originalLayout) originalLayout(self,selector);
-    UIViewController *controller=self;
-    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(controller.view,labels);
-    NSMutableArray *texts=[NSMutableArray array]; for (UILabel *label in labels) if (label.text.length) [texts addObject:label.text];
-    if (DSObserveNativeSettingsLanguage(texts)) {
-        dispatch_async(dispatch_get_main_queue(),^{ refreshTables(controller.view); });
-    }
-    updateTitle(controller);
+    NSMutableArray *labels=[NSMutableArray array], *texts=[NSMutableArray array];
+    gatherLabels(((UIViewController *)self).view,labels);
+    for (UILabel *label in labels) if (label.text.length) [texts addObject:label.text];
+    DSObserveNativeSettingsLanguage(texts);
 }
-static void profileSelect(id self,SEL selector,UITableView *table,NSIndexPath *path) {
-    NSString *item=itemAt(table,path);
-    if (removedItem(item)) return;
-    if (isItem(item,@"accountDataConfig")) {
-        [table deselectRowAtIndexPath:path animated:YES];
-        [(UIViewController *)self presentViewController:DSAPICreateUsageController(nativeBodyFont(self)) animated:YES completion:nil]; return;
-    }
-    if (isItem(item,@"aboutCheckUpdate")) {
-        [table deselectRowAtIndexPath:path animated:YES];
-        [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases"] options:@{} completionHandler:nil]; return;
-    }
-    if (originalSelect) originalSelect(self,selector,table,path);
+static IMP replaceMethod(Class cls,SEL selector,IMP replacement) {
+    Method method=class_getInstanceMethod(cls,selector);
+    if (!method) return NULL;
+    IMP original=method_getImplementation(method);
+    if (!class_addMethod(cls,selector,replacement,method_getTypeEncoding(method)))
+        class_replaceMethod(cls,selector,replacement,method_getTypeEncoding(method));
+    return original;
 }
-static CGFloat profileHeight(id self,SEL selector,UITableView *table,NSIndexPath *path) {
-    if (removedItem(itemAt(table,path))) return 0.01;
-    return originalHeight ? originalHeight(self,selector,table,path) : UITableViewAutomaticDimension;
-}
-static void profileDisplay(id self,SEL selector,UITableView *table,UITableViewCell *cell,NSIndexPath *path) {
-    NSDictionary *previousAccessibility=objc_getAssociatedObject(cell,&cellAccessibilityKey);
-    if (previousAccessibility) {
-        cell.isAccessibilityElement=[previousAccessibility[@"element"] boolValue];
-        cell.accessibilityElementsHidden=[previousAccessibility[@"cell"] boolValue];
-        cell.contentView.accessibilityElementsHidden=[previousAccessibility[@"content"] boolValue];
-        for (NSArray *entry in previousAccessibility[@"children"]) {
-            UIView *view=entry[0]; view.isAccessibilityElement=[entry[1] boolValue]; view.accessibilityElementsHidden=[entry[2] boolValue];
-        }
-        objc_setAssociatedObject(cell,&cellAccessibilityKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if ([cell.accessibilityIdentifier isEqual:@"DSAPI.Usage"]) cell.accessibilityLabel=nil;
-    for (NSArray *entry in objc_getAssociatedObject(cell,&cellStateKey)) ((UIView *)entry[0]).hidden=[entry[1] boolValue];
-    [objc_getAssociatedObject(cell,&cellOverlayKey) removeFromSuperview];
-    objc_setAssociatedObject(cell,&cellStateKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(cell,&cellOverlayKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    cell.hidden=NO;
-    NSDictionary *corners=objc_getAssociatedObject(cell,&cellCornerKey);
-    if (corners) {
-        cell.layer.cornerRadius=[corners[@"radius"] doubleValue]; cell.layer.maskedCorners=[corners[@"mask"] unsignedIntegerValue];
-        cell.clipsToBounds=[corners[@"clip"] boolValue]; objc_setAssociatedObject(cell,&cellCornerKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (originalDisplay) originalDisplay(self,selector,table,cell,path);
-    NSString *item=itemAt(table,path); cell.hidden=removedItem(item);
-    if (cell.hidden) {
-        NSMutableArray *labels=[NSMutableArray array], *states=[NSMutableArray array]; gatherLabels(cell,labels);
-        for (UILabel *label in labels) {
-            [states addObject:@[label,@(label.isAccessibilityElement),@(label.accessibilityElementsHidden)]];
-            label.text=nil; label.attributedText=nil; label.accessibilityLabel=nil;
-            label.isAccessibilityElement=NO; label.accessibilityElementsHidden=YES;
-        }
-        cell.accessibilityLabel=nil; cell.accessibilityValue=nil;
-        objc_setAssociatedObject(cell,&cellAccessibilityKey,@{@"element":@(cell.isAccessibilityElement),
-            @"cell":@(cell.accessibilityElementsHidden),@"content":@(cell.contentView.accessibilityElementsHidden),@"children":states},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        cell.isAccessibilityElement=NO; cell.accessibilityElementsHidden=YES; cell.contentView.accessibilityElementsHidden=YES;
-    } else {
-        NSInteger remaining=0; BOOL hasRemoved=NO;
-        for (NSInteger row=0;row<[table numberOfRowsInSection:path.section];row++) {
-            if (removedItem(itemAt(table,[NSIndexPath indexPathForRow:row inSection:path.section]))) hasRemoved=YES;
-            else remaining++;
-        }
-        if (hasRemoved && remaining==1) {
-            objc_setAssociatedObject(cell,&cellCornerKey,@{@"radius":@(cell.layer.cornerRadius),@"mask":@(cell.layer.maskedCorners),@"clip":@(cell.clipsToBounds)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            cell.layer.cornerRadius=CGRectGetHeight(cell.bounds)/2.0;
-            cell.layer.maskedCorners=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner|kCALayerMinXMaxYCorner|kCALayerMaxXMaxYCorner;
-            cell.clipsToBounds=YES;
-        }
-    }
-    #if DSAPI_RUNTIME_DIAGNOSTICS
-    NSMutableArray *observed=[[NSUserDefaults.standardUserDefaults arrayForKey:@"DSAPIAdapter.nativeSettingsItems"] mutableCopy] ?: [NSMutableArray array];
-    if (item.length && ![observed containsObject:item]) { [observed addObject:item]; [NSUserDefaults.standardUserDefaults setObject:observed forKey:@"DSAPIAdapter.nativeSettingsItems"]; }
-    #endif
-    if ([cell.accessibilityIdentifier hasPrefix:@"DSAPI."]) cell.accessibilityIdentifier=nil;
-    if (isItem(item,@"ttsVoice")) cell.accessibilityIdentifier=@"DSAPI.VoicePicker";
-    if (isItem(item,@"aboutCheckUpdate")) cell.accessibilityIdentifier=@"DSAPI.RepositoryUpdates";
-    if (!isItem(item,@"accountDataConfig")) return;
-    NSMutableArray *labels=[NSMutableArray array]; gatherLabels(cell.contentView,labels);
-    UILabel *nativeTitle=nil;
-    for (UILabel *label in labels) if (label.text.length && !label.hidden) { nativeTitle=label; break; }
-    if (nativeTitle) {
-        nativeTitle.text=DSAPILocalized(@"usage");
-        cell.accessibilityIdentifier=@"DSAPI.Usage"; cell.accessibilityLabel=DSAPILocalized(@"usage");
-        return;
-    }
-    NSMutableArray *states=[NSMutableArray array];
-    for (UIView *view in cell.contentView.subviews) { [states addObject:@[view,@(view.hidden)]]; view.hidden=YES; }
-    objc_setAssociatedObject(cell,&cellStateKey,states,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    UILabel *label=[UILabel new]; label.text=DSAPILocalized(@"usage"); label.textColor=UIColor.labelColor;
-    label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; label.adjustsFontForContentSizeCategory=YES;
-    label.translatesAutoresizingMaskIntoConstraints=NO;
-    [cell.contentView addSubview:label];
-    objc_setAssociatedObject(cell,&cellOverlayKey,label,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [NSLayoutConstraint activateConstraints:@[[label.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor constant:34],
-        [label.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]]];
-    cell.accessibilityIdentifier=@"DSAPI.Usage"; cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
-}
-static void footerLayout(id self,SEL selector) {
-    if (originalFooterLayout) originalFooterLayout(self,selector);
-    UIView *footer=self;
-    UIView *overlay=objc_getAssociatedObject(footer,&footerOverlayKey);
-    if (!overlay) {
-        overlay=[UIView new]; overlay.userInteractionEnabled=NO; overlay.translatesAutoresizingMaskIntoConstraints=NO;
-        UIImageView *icon=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"gearshape"]];
-        icon.tintColor=UIColor.secondaryLabelColor; icon.contentMode=UIViewContentModeScaleAspectFit;
-        UILabel *label=[UILabel new]; label.tag=7401; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-        label.textColor=UIColor.labelColor; label.adjustsFontForContentSizeCategory=YES;
-        UIImageView *arrow=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward"]]; arrow.tintColor=UIColor.tertiaryLabelColor;
-        for (UIView *view in @[icon,label,arrow]) { view.translatesAutoresizingMaskIntoConstraints=NO; [overlay addSubview:view]; }
-        [footer addSubview:overlay];
-        [NSLayoutConstraint activateConstraints:@[[overlay.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],
-            [overlay.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor],[overlay.topAnchor constraintEqualToAnchor:footer.topAnchor],
-            [overlay.bottomAnchor constraintEqualToAnchor:footer.bottomAnchor],
-            [icon.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:16],[icon.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
-            [icon.widthAnchor constraintEqualToConstant:32],[icon.heightAnchor constraintEqualToConstant:32],
-            [label.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:16],[label.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
-            [arrow.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-24],[arrow.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
-            [arrow.widthAnchor constraintEqualToConstant:10],[arrow.heightAnchor constraintEqualToConstant:16],
-            [label.trailingAnchor constraintLessThanOrEqualToAnchor:arrow.leadingAnchor constant:-12]]];
-        objc_setAssociatedObject(footer,&footerOverlayKey,overlay,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    for (UIView *view in footer.subviews) if (view!=overlay) {
-        view.hidden=YES; view.isAccessibilityElement=NO; view.accessibilityElementsHidden=YES;
-        view.accessibilityIdentifier=nil;
-    }
-    footer.isAccessibilityElement=YES; footer.accessibilityElements=@[];
-    UILabel *label=[overlay viewWithTag:7401]; NSString *text=DSAPILocalized(@"settings");
-    NSMutableArray *nativeLabels=[NSMutableArray array];
-    for (UIView *view in footer.subviews) if (view!=overlay) gatherLabels(view,nativeLabels);
-    for (UILabel *native in nativeLabels) if (native.font && native.text.length) { label.font=native.font; break; }
-    if (![label.text isEqual:text]) label.text=text;
-    footer.accessibilityLabel=text; footer.accessibilityIdentifier=@"DSAPI.SettingsEntry";
-}
-static NSString *footerAccessibilityLabel(id self,SEL selector) { return DSAPILocalized(@"settings"); }
-static NSArray *footerAccessibilityElements(id self,SEL selector) { return @[]; }
 void DSInstallSettingsIntegration(void) {
     Class profile=NSClassFromString(@"_TtC13DeepSeek_Chat21ProfileViewController");
-    if (profile) {
-        class_addMethod(profile,NSSelectorFromString(@"dsapi_presentSettings"),(IMP)presentAPI,"v@:");
-        originalLoad=(void *)replaceMethod(profile,@selector(viewDidLoad),(IMP)profileLoad,"v@:");
-        originalLayout=(void *)replaceMethod(profile,@selector(viewDidLayoutSubviews),(IMP)profileLayout,"v@:");
-        originalSelect=(void *)replaceMethod(profile,@selector(tableView:didSelectRowAtIndexPath:),(IMP)profileSelect,"v@:@@");
-        originalDisplay=(void *)replaceMethod(profile,@selector(tableView:willDisplayCell:forRowAtIndexPath:),(IMP)profileDisplay,"v@:@@@");
-        originalHeight=(void *)replaceMethod(profile,@selector(tableView:heightForRowAtIndexPath:),(IMP)profileHeight,"d@:@@");
-        originalHeaderHeight=(void *)replaceMethod(profile,@selector(tableView:heightForHeaderInSection:),(IMP)headerHeight,"d@:@q");
-        originalSectionFooterHeight=(void *)replaceMethod(profile,@selector(tableView:heightForFooterInSection:),(IMP)sectionFooterHeight,"d@:@q");
-        originalHeaderDisplay=(void *)replaceMethod(profile,@selector(tableView:willDisplayHeaderView:forSection:),(IMP)headerDisplay,"v@:@@q");
-    }
-    Class footer=NSClassFromString(@"_TtCC13DeepSeek_Chat25SessionListViewController10FooterView");
-    originalFooterLayout=(void *)replaceMethod(footer,@selector(layoutSubviews),(IMP)footerLayout,"v@:");
-    replaceMethod(footer,@selector(accessibilityLabel),(IMP)footerAccessibilityLabel,"@@:");
-    replaceMethod(footer,@selector(accessibilityElements),(IMP)footerAccessibilityElements,"@@:");
-    Class cell=NSClassFromString(@"_TtCC13DeepSeek_Chat21ProfileViewController17InsetsGroupedCell");
-    originalSettingsCellLayout=(void *)replaceMethod(cell,@selector(layoutSubviews),(IMP)settingsCellLayout,"v@:");
+    if (!profile) return;
+    class_addMethod(profile,NSSelectorFromString(@"dsapi_presentSettings"),(IMP)presentAPI,"v@:");
+    originalLoad=(void *)replaceMethod(profile,@selector(viewDidLoad),(IMP)profileLoad);
+    originalLayout=(void *)replaceMethod(profile,@selector(viewDidLayoutSubviews),(IMP)profileLayout);
 }

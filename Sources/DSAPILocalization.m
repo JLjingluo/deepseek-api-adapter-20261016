@@ -43,6 +43,10 @@ NSString *DSAPILocalized(NSString *key) {
     static NSDictionary *words; static dispatch_once_t once;
     dispatch_once(&once, ^{
         words=@{
+          @"mode":@[@"Chat mode",@"对话模式",@"對話模式"],
+          @"enableAPI":@[@"Use API for chat",@"使用 API 对话",@"使用 API 對話"],
+          @"restartTitle":@[@"Restart to switch modes",@"重新启动以切换模式",@"重新啟動以切換模式"],
+          @"modeNote":@[@"Off keeps the original service. On uses your API for chat while retaining the original sign-in and account. Save, then close and reopen the app to switch modes. API history is stored separately on this device; original cloud conversations are not migrated.",@"关闭时使用原版服务；开启后使用 API 对话，保留原登录和账号。保存后请关闭并重新打开应用以切换模式。API 会话单独保存在此设备，原云端会话不会迁移。",@"關閉時使用原版服務；開啟後使用 API 對話，保留原登入及帳號。儲存後請關閉並重新開啟應用以切換模式。API 對話另存於此裝置，原雲端對話不會遷移。"],
           @"api":@[@"API Settings",@"API 设置",@"API 設定"],
           @"usage":@[@"API Usage",@"用量统计",@"用量統計"],
           @"connection":@[@"Connection",@"连接",@"連線"],

@@ -30,6 +30,7 @@ jobs:
             Sources/DSVoiceCatalog.m \
             Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ProtocolTests.m \
             -framework Foundation -framework Security -framework AVFoundation -o build/ProtocolTests
+          build/ProtocolTests --official-mode
           build/ProtocolTests
           xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
             Sources/DSOpenAIClient.m Sources/DSUsageStore.m Sources/DSAPIConfiguration.m Sources/DSStreamDecoder.m Sources/DSAPILocalization.m Tests/ClientTests.m \

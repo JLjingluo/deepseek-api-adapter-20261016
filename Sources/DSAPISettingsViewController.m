@@ -1,6 +1,7 @@
 #import "DSAPISettingsViewController.h"
 #import "DSAPIConfiguration.h"
 #import "DSAPILocalization.h"
+#import "DSUsageViewController.h"
 @interface DSAPISettingsViewController ()
 @property(nonatomic, strong) DSAPIConfiguration *configuration;
 @property(nonatomic, strong) NSArray<UITextField *> *fields;
@@ -41,18 +42,31 @@
     self.fields = fields;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
 }
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 3; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 2 ? 3 : 2;
+    return section==0 || section==4 ? 1 : (section==3 ? 3 : 2);
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return @[DSAPILocalized(@"connection"), DSAPILocalized(@"models"), DSAPILocalized(@"advanced")][section];
+    return @[DSAPILocalized(@"mode"), DSAPILocalized(@"connection"), DSAPILocalized(@"models"), DSAPILocalized(@"advanced"),DSAPILocalized(@"usage")][section];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return DSAPILocalized(@[@"connectionNote",@"modelNote",@"advancedNote"][section]);
+    return DSAPILocalized(@[@"modeNote",@"connectionNote",@"modelNote",@"advancedNote",@"usageNote"][section]);
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section==2 && indexPath.row==2) {
+    if (indexPath.section==0) {
+        UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text=DSAPILocalized(@"enableAPI"); cell.textLabel.font=self.bodyFont;
+        UISwitch *toggle=[UISwitch new]; toggle.on=self.configuration.enabled;
+        toggle.accessibilityLabel=DSAPILocalized(@"enableAPI"); toggle.accessibilityIdentifier=@"DSAPI.Enabled";
+        [toggle addTarget:self action:@selector(modeChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView=toggle; cell.selectionStyle=UITableViewCellSelectionStyleNone; return cell;
+    }
+    if (indexPath.section==4) {
+        UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text=DSAPILocalized(@"usage"); cell.textLabel.font=self.bodyFont;
+        cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator; cell.accessibilityIdentifier=@"DSAPI.Usage"; return cell;
+    }
+    if (indexPath.section==3 && indexPath.row==2) {
         UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.textLabel.text=DSAPILocalized(@"requestUsage"); cell.textLabel.font=self.bodyFont ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         cell.selectionStyle=UITableViewCellSelectionStyleNone;
@@ -61,7 +75,7 @@
         [toggle addTarget:self action:@selector(usageOptionChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView=toggle; return cell;
     }
-    NSUInteger index = indexPath.section * 2 + indexPath.row;
+    NSUInteger index = (indexPath.section-1) * 2 + indexPath.row;
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UITextField *field = self.fields[index];
@@ -75,6 +89,11 @@
         [field.heightAnchor constraintGreaterThanOrEqualToConstant:24]]];
     return cell;
 }
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
+    [tableView deselectRowAtIndexPath:path animated:YES];
+    if (path.section==4) [self presentViewController:DSAPICreateUsageController(self.bodyFont) animated:YES completion:nil];
+}
+- (void)modeChanged:(UISwitch *)sender { self.configuration.enabled=sender.on; }
 - (void)usageOptionChanged:(UISwitch *)sender { self.configuration.requestUsage=sender.on; }
 - (void)cancel { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)save {
@@ -90,6 +109,11 @@
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
             message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil]; return;
+    }
+    if (self.configuration.enabled!=DSAPIIsEnabled()) {
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"restartTitle") message:DSAPILocalized(@"modeNote") preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self dismissViewControllerAnimated:YES completion:nil]; }]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }
     [self dismissViewControllerAnimated:YES completion:nil];

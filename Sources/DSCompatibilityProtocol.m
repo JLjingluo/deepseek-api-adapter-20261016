@@ -21,9 +21,13 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     static NSMutableDictionary *streams; static dispatch_once_t once;
     dispatch_once(&once, ^{ streams = [NSMutableDictionary dictionary]; }); return streams;
 }
-+ (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    return ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
-        [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] && [request.URL.path hasPrefix:@"/api/"];
+ + (BOOL)canInitWithRequest:(NSURLRequest *)request {
+    NSString *path=request.URL.path;
+    // Authentication, account settings and all original services stay native.
+    // API mode owns its entire chat namespace, including unsupported chat routes.
+    return DSAPIIsEnabled() && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
+        [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] &&
+        ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"]);
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {

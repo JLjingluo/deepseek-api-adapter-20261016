@@ -7,9 +7,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy) NSString *systemPrompt;
 @property(nonatomic) NSTimeInterval timeout;
 @property(nonatomic) BOOL requestUsage;
+@property(nonatomic) BOOL enabled;
 @property(nonatomic, copy) NSString *apiKey;
 + (instancetype)loadConfiguration;
 - (BOOL)save:(NSError **)error;
 - (nullable NSURL *)completionURL:(NSError **)error;
 @end
 NS_ASSUME_NONNULL_END
+
+/// Fixed for the lifetime of a process; changing modes requires a relaunch.
+FOUNDATION_EXPORT BOOL DSAPIIsEnabled(void);
