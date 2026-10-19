@@ -51,9 +51,9 @@ final class CaptureTests: XCTestCase {
             XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","HTTP \(status)")).firstMatch.exists)
             capture(app,"actionable-api-error-\(status)")
             alert.buttons["Copy details"].tap()
-            let copied=UIPasteboard.general.string ?? ""
-            XCTAssertTrue(copied.contains("\(status)") && copied.contains("provider_request"))
-            XCTAssertFalse(copied.contains("ci-dummy-key") || copied.contains("API diagnostic"))
+            // Do not synchronously read another app's pasteboard from the UI
+            // runner: iOS can wait for paste permission and stall automation.
+            // The focused CI probe verifies the copied JSON through simctl.
         }
         openAPISettings(app)
         let test=app.cells["DSAPI.TestConnection"].staticTexts.firstMatch

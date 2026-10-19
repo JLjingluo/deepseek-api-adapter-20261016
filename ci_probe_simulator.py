@@ -418,6 +418,14 @@ def probe():
         if copied.returncode: raise RuntimeError('Could not prepare disposable secure-field clipboard')
     collect_ui_observations(device)
     if report.get('ui_test_exit_code')==0: report['process_alive']=True
+    if os.environ.get('PROBE_UI_TEST_FOCUS')=='errors' and report.get('ui_test_exit_code')==0:
+        copied=subprocess.run(['xcrun','simctl','pbpaste',device],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+        try:
+            clipboard=json.loads(copied.stdout)
+            valid=clipboard.get('code')==402 and clipboard.get('stage')=='provider_request' and 'ci-dummy-key' not in copied.stdout and 'API diagnostic' not in copied.stdout
+        except (ValueError,AttributeError): valid=False
+        report['copied_diagnostics_verified']=valid
+        if not valid: raise RuntimeError('Copied diagnostics were not the expected sanitized HTTP failure')
     if adapter_enabled and runtime_report.is_file():
         shutil.copy2(runtime_report, diagnostics/'runtime-probe-after-ui.json')
     after_logs = run(['xcrun', 'simctl', 'spawn', device, 'log', 'show', '--last', '3m', '--style', 'compact',
