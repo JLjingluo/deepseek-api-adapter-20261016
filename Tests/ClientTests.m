@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import "DSOpenAIClient.h"
 #import "DSUsageStore.h"
+#import "DSAPIDiagnostics.h"
 #import <objc/runtime.h>
 
 static void check(BOOL value, NSString *name) {
@@ -42,8 +43,9 @@ static NSString *scenario;
     lastBody=body ? [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL] : nil;
     lastAuthorization=[self.request valueForHTTPHeaderField:@"Authorization"];
     NSString *mode=[scenario copy];
-    if ([mode isEqual:@"timeout"]) {
-        [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil]];
+    NSDictionary *networkCodes=@{@"timeout":@(NSURLErrorTimedOut),@"dns":@(NSURLErrorCannotFindHost),@"offline":@(NSURLErrorNotConnectedToInternet),@"tls":@(NSURLErrorServerCertificateUntrusted),@"lost":@(NSURLErrorNetworkConnectionLost),@"connect":@(NSURLErrorCannotConnectToHost)};
+    if (networkCodes[mode]) {
+        [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:[networkCodes[mode] integerValue] userInfo:@{NSLocalizedDescriptionKey:@"test-dummy-key hello system instruction",@"Authorization":@"Bearer test-dummy-key"}]];
         return;
     }
     if ([mode isEqual:@"cancel"]) return;
@@ -52,6 +54,7 @@ static NSString *scenario;
     NSHTTPURLResponse *response=[[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:status HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type":mime}];
     [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
     NSString *wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"思考🧠\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好🌏\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+    if ([mode hasPrefix:@"http"]) wire=@"{\"error\":{\"code\":\"invalid_api_key\",\"message\":\"test-dummy-key hello system instruction\"}}";
     if ([mode isEqual:@"malformed"]) wire=@"data: {invalid}\n\n";
     if ([mode isEqual:@"truncated"]) wire=@"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n";
     if ([mode isEqual:@"success"]) wire=[wire stringByReplacingOccurrencesOfString:@"data: [DONE]" withString:@"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}\n\ndata: [DONE]"];
@@ -86,6 +89,14 @@ static void runCase(NSString *name, BOOL success) {
     if (success && failure) fprintf(stderr,"Client failure: %s:%ld (%s); fixture reached=%s\n",
         failure.domain.UTF8String,(long)failure.code,failure.localizedDescription.UTF8String,lastBody ? "yes" : "no");
     check(success ? !failure : failure!=nil,[name stringByAppendingString:@" expected outcome"]);
+    NSDictionary *diagnostic=DSAPILastDiagnostic();
+    NSString *detail=DSAPIDiagnosticText(diagnostic);
+    check(![detail containsString:@"test-dummy-key"] && ![detail containsString:@"hello"] && ![detail containsString:@"system instruction"],@"diagnostics never retain credentials, prompts or free-form server/network messages");
+    if (!success) {
+        NSDictionary *categories=@{@"http400":@"parametersError",@"http401":@"authError",@"http402":@"balanceError",@"http403":@"permissionError",@"http404":@"endpointError",@"http413":@"sizeError",@"http429":@"rateError",@"http500":@"serverError",@"mime":@"sseError",@"malformed":@"streamError",@"truncated":@"streamError",@"timeout":@"timeoutError",@"dns":@"dnsError",@"offline":@"offlineError",@"tls":@"tlsError",@"lost":@"lostError",@"connect":@"connectError",@"cancel":@"cancelled"};
+        check([diagnostic[@"category"] isEqual:categories[name]],@"HTTP, key, network and stream failures retain actionable categories");
+        check([diagnostic[@"code"] isEqual:@(failure.code)] && diagnostic[@"id"]!=nil,@"diagnostic code and correlation ID survive native error wrapping");
+    }
     if (success) {
         NSDictionary *snapshot=DSAPIUsageSnapshot();
         long long tokens=[snapshot[@"total_tokens"] longLongValue]-[usageBefore[@"total_tokens"] longLongValue];
@@ -114,7 +125,7 @@ int main(void) {
         method_exchangeImplementations(normal,fixture);
         runCase(@"success",YES);
         runCase(@"usage-off",YES);
-        for (NSString *name in @[@"http401",@"http429",@"http500",@"mime",@"malformed",@"truncated",@"timeout",@"cancel"])
+        for (NSString *name in @[@"http400",@"http401",@"http402",@"http403",@"http404",@"http413",@"http429",@"http500",@"mime",@"malformed",@"truncated",@"timeout",@"dns",@"offline",@"tls",@"lost",@"connect",@"cancel"])
             runCase(name,NO);
         [NSURLProtocol unregisterClass:ClientFixture.class];
         method_exchangeImplementations(normal,fixture);

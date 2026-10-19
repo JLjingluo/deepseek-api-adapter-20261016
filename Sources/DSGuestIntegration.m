@@ -4,6 +4,7 @@
 #import "DSAPIConfiguration.h"
 #import "DSAPILocalization.h"
 #import "DSAPISettingsViewController.h"
+#import "DSAPIDiagnostics.h"
 extern BOOL DSAPIBeginGuest(void *controller);
 extern BOOL DSAPILeaveGuest(void);
 extern BOOL DSAPIPresentGuestConversation(void *controller);
@@ -238,6 +239,16 @@ static void layoutFooter(id self,SEL selector) {
     }
 }
 void DSInstallGuestIntegration(void) {
+    [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.RequestFailed" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        UIViewController *top=topController(); if (!top || [top isKindOfClass:UIAlertController.class]) return;
+        NSDictionary *record=note.userInfo[@"DSAPI.diagnostic"] ?: @{};
+        NSString *summary=[NSString stringWithFormat:@"%@\n\n%@ · %@\n%@ (%@)\nID: %@",note.userInfo[NSLocalizedDescriptionKey] ?: @"API error",record[@"stage"] ?: @"",record[@"host"] ?: @"",record[@"domain"] ?: @"",record[@"code"] ?: @0,record[@"id"] ?: @""];
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"requestFailed") message:summary preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"copyDiagnostics") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { UIPasteboard.generalPasteboard.string=DSAPIDiagnosticText(record); }]];
+        [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"api") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { dispatch_async(dispatch_get_main_queue(),^{ openAPI(nil,NULL); }); }]];
+        [top presentViewController:alert animated:YES completion:nil];
+    }];
     [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.SettingsChanged" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
         UIViewController *sidebar=DSSidebarController;
         if (sidebar.isViewLoaded) { [sidebar.view setNeedsLayout]; [sidebar.view layoutIfNeeded]; }

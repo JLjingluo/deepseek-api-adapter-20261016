@@ -1,6 +1,7 @@
 #import "DSAPIConfiguration.h"
 #import <Security/Security.h>
 #import "DSAPILocalization.h"
+#import "DSAPIDiagnostics.h"
 
 static NSString *const DSConfigKey = @"DSAPIAdapter.configuration.v1";
 static NSDictionary *DSKeyQuery(void) {
@@ -16,7 +17,7 @@ static NSError *DSConfigError(NSString *description) {
 - (BOOL)saveKeyData:(NSData *)data error:(NSError **)error;
 @end
 @implementation DSAPIConfiguration
-- (instancetype)init { if ((self=[super init])) { _requestUsage=YES; _reasoningEffort=@"auto"; } return self; }
+- (instancetype)init { if ((self=[super init])) { _requestUsage=YES; _reasoningEffort=@"auto"; _keychainStatus=NSIntegerMax; } return self; }
 + (instancetype)loadConfigurationWithoutAPIKey {
     DSAPIConfiguration *config = [self new];
     NSDictionary *values = [NSUserDefaults.standardUserDefaults dictionaryForKey:DSConfigKey];
@@ -41,6 +42,7 @@ static NSError *DSConfigError(NSString *description) {
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSData *data = CFBridgingRelease(result);
+    config.keychainStatus=status;
     config.apiKey = status == errSecSuccess ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"" : @"";
     return config;
 }
@@ -98,6 +100,7 @@ static NSError *DSConfigError(NSString *description) {
     return [ids.allObjects sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 }
 - (BOOL)save:(NSError **)error {
+    self.apiKey=[self.apiKey stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (![self completionURL:error]) return NO;
     if (![@[@"auto",@"low",@"medium",@"high",@"max"] containsObject:self.reasoningEffort ?: @"auto"] || !self.model.length || self.timeout < 10 || self.timeout > 3600 ||
         [self.apiKey rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet].location != NSNotFound) {
@@ -125,6 +128,15 @@ static NSError *DSConfigError(NSString *description) {
             status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
         }
     }
+    if (status==errSecSuccess && keyData.length) {
+        NSMutableDictionary *verification=[query mutableCopy];
+        verification[(__bridge id)kSecReturnData]=@YES;
+        verification[(__bridge id)kSecMatchLimit]=(__bridge id)kSecMatchLimitOne;
+        CFTypeRef stored=NULL;
+        status=SecItemCopyMatching((__bridge CFDictionaryRef)verification,&stored);
+        NSData *readback=CFBridgingRelease(stored);
+        if (status==errSecSuccess && ![readback isEqual:keyData]) status=errSecDecode;
+    }
     if (status != errSecSuccess) {
         if (error) *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status
             userInfo:@{NSLocalizedDescriptionKey:DSAPILocalized(@"keychainError")}];
@@ -148,4 +160,92 @@ BOOL DSAPIHasPendingModeChange(void) {
 BOOL DSAPIIsLocalGuest(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.localGuestActive"]; }
 void DSAPIRequestGuestSignIn(void) {
     [NSNotificationCenter.defaultCenter postNotificationName:@"DSAPIAdapter.GuestSignInRequired" object:nil];
+}
+
+// Diagnostics deliberately use an allowlist. Neither error.userInfo nor provider
+// bodies, URLs with paths/queries, keys, account IDs, prompts or files are stored.
+static NSString *DSDiagnosticCategory(NSError *error) {
+    if (!error) return @"success";
+    if ([error.domain isEqual:NSOSStatusErrorDomain]) {
+        if (error.code==errSecItemNotFound) return @"keyMissing";
+        if (error.code==errSecMissingEntitlement) return @"keyEntitlement";
+        if (error.code==errSecInteractionNotAllowed || error.code==errSecNotAvailable) return @"keyLocked";
+        return @"keyReadFailed";
+    }
+    if ([error.domain isEqual:NSURLErrorDomain]) {
+        if (error.code==NSURLErrorCancelled) return @"cancelled";
+        if (error.code==NSURLErrorTimedOut) return @"timeoutError";
+        if (error.code==NSURLErrorNotConnectedToInternet) return @"offlineError";
+        if (error.code==NSURLErrorCannotFindHost || error.code==NSURLErrorDNSLookupFailed) return @"dnsError";
+        if (error.code==NSURLErrorCannotConnectToHost) return @"connectError";
+        if (error.code==NSURLErrorNetworkConnectionLost) return @"lostError";
+        if (error.code<=NSURLErrorSecureConnectionFailed && error.code>=NSURLErrorClientCertificateRequired) return @"tlsError";
+        if (error.code==NSURLErrorAppTransportSecurityRequiresSecureConnection) return @"atsError";
+        return @"transportError";
+    }
+    if ([error.domain isEqual:@"DSAPI.HTTP"]) {
+        if (error.code==401) return @"authError";
+        if (error.code==402) return @"balanceError";
+        if (error.code==403) return @"permissionError";
+        if (error.code==404) return @"endpointError";
+        if (error.code==429) return @"rateError";
+        if (error.code==408 || error.code==504) return @"timeoutError";
+        if (error.code>=500) return @"serverError";
+        if (error.code>=300 && error.code<400) return @"redirectError";
+        if (error.code==413) return @"sizeError";
+        if (error.code==408 || error.code==504) return @"timeoutError";
+        if (error.code>=200 && error.code<300) return @"sseError";
+        return @"parametersError";
+    }
+    if ([error.domain isEqual:@"DSAPI.Stream"]) return @"streamError";
+    if ([error.domain isEqual:@"DSAPI.Configuration"] && error.code==401) return @"keyMissing";
+    if ([error.domain isEqual:@"DSAPI.Configuration"]) return @"configurationError";
+    return @"localError";
+}
+static NSDictionary *DSDiagnosticBase(DSAPIConfiguration *config) {
+    config=config ?: [DSAPIConfiguration loadConfigurationWithoutAPIKey];
+    NSString *host=[NSURL URLWithString:config.baseURL].host.lowercaseString ?: @"";
+    // A malformed user entry must not turn the diagnostics field into a secret.
+    NSCharacterSet *hostChars=[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789.-:[]"];
+    if (host.length>253 || [host rangeOfCharacterFromSet:hostChars.invertedSet].location!=NSNotFound) host=@"invalid-host";
+    return @{@"id":NSUUID.UUID.UUIDString,@"time":NSDate.date.description,@"host":host,
+        @"endpoint":@"POST /chat/completions",@"enabled":@(DSAPIIsEnabled()),@"saved_enabled":@(config.enabled),
+        @"restart_pending":@(DSAPIHasPendingModeChange()),@"key_present":@(config.apiKey.length>0),
+        @"keychain_status":config.keychainStatus==NSIntegerMax ? (id)@"not-read" : @(config.keychainStatus),@"timeout_seconds":@(config.timeout)};
+}
+NSDictionary *DSAPILastDiagnostic(void) { return [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.lastDiagnostic"] ?: @{}; }
+NSString *DSAPIDiagnosticText(NSDictionary *record) {
+    if (!record.count) return DSAPILocalized(@"noDiagnostics");
+    NSData *data=[NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted|NSJSONWritingSortedKeys error:NULL];
+    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+}
+NSError *DSAPIAnnotateError(NSError *error,NSString *stage,DSAPIConfiguration *config) {
+    if ([error.userInfo[@"DSAPI.diagnostic"] isKindOfClass:NSDictionary.class]) return error;
+    NSString *category=DSDiagnosticCategory(error);
+    NSMutableDictionary *record=[DSDiagnosticBase(config) mutableCopy];
+    NSSet *domains=[NSSet setWithArray:@[NSURLErrorDomain,NSOSStatusErrorDomain,@"DSAPI.HTTP",@"DSAPI.Stream",@"DSAPI.Client",@"DSAPI.Configuration",@"DSAPI.Compatibility",@"DSAPI.Attachment",@"DSAPI.Store"]];
+    record[@"stage"]=stage; record[@"outcome"]=[category isEqual:@"cancelled"] ? @"cancelled" : @"failed";
+    record[@"category"]=category; record[@"domain"]=[domains containsObject:error.domain] ? error.domain : @"other"; record[@"code"]=@(error.code);
+    if ([error.domain isEqual:@"DSAPI.HTTP"]) record[@"http_status"]=@(error.code);
+    NSSet *providerCodes=[NSSet setWithArray:@[@"invalid_api_key",@"authentication_error",@"insufficient_quota",@"insufficient_balance",@"rate_limit_exceeded",@"invalid_request_error",@"model_not_found",@"context_length_exceeded",@"content_filter",@"unsupported_parameter",@"permission_denied",@"server_error"]];
+    NSString *provider=error.userInfo[@"DSAPI.providerCode"];
+    if ([providerCodes containsObject:provider ?: @""]) record[@"provider_code"]=provider;
+    NSString *mime=error.userInfo[@"DSAPI.responseType"];
+    if ([@[@"text/event-stream",@"application/json",@"text/html",@"text/plain"] containsObject:mime ?: @""]) record[@"response_type"]=mime;
+    [NSUserDefaults.standardUserDefaults setObject:record forKey:@"DSAPIAdapter.lastDiagnostic"];
+    if (![category isEqual:@"cancelled"]) [NSUserDefaults.standardUserDefaults setObject:record forKey:@"DSAPIAdapter.lastFailedDiagnostic"];
+    NSString *message=[category isEqual:@"localError"] ? error.localizedDescription : DSAPILocalized(category);
+    return [NSError errorWithDomain:error.domain code:error.code userInfo:@{NSLocalizedDescriptionKey:message ?: @"API error",@"DSAPI.diagnostic":record}];
+}
+void DSAPIRecordOutcome(DSAPIConfiguration *config,NSString *outcome,NSTimeInterval duration,NSInteger status) {
+    NSMutableDictionary *record=[DSDiagnosticBase(config) mutableCopy];
+    record[@"stage"]=@"provider_request"; record[@"outcome"]=outcome; record[@"duration_seconds"]=@(MAX(0,duration));
+    if (status) record[@"http_status"]=@(status);
+    [NSUserDefaults.standardUserDefaults setObject:record forKey:@"DSAPIAdapter.lastDiagnostic"];
+}
+void DSAPIPresentRequestFailure(NSError *error) {
+    if ([error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled) return;
+    dispatch_async(dispatch_get_main_queue(),^{
+        [NSNotificationCenter.defaultCenter postNotificationName:@"DSAPIAdapter.RequestFailed" object:nil userInfo:error.userInfo];
+    });
 }

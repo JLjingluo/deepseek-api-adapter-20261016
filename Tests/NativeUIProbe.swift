@@ -257,11 +257,11 @@ final class CaptureTests: XCTestCase {
         app.terminate()
         let chat=openNativeApp()
         let input=try XCTUnwrap(chat.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
-        enterPrompt("只回复：连接验证成功",into:input,in:chat)
+        enterPrompt("请把数字 173 和 286 相加，只回复结果。",into:input,in:chat)
         chat.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
-        let response=chat.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","连接验证成功","连接验证成功")).firstMatch
-        // The submitted question also contains the marker, so require a second
-        // rendered element and wait for the native read-aloud control.
+        let response=chat.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","459","459")).firstMatch
+        // The expected answer is absent from the question. Require both rendered
+        // answer text and the completed native read-aloud control.
         let read=chat.buttons["DSAPI.ReadAloud"].firstMatch
         XCTAssertTrue(read.waitForExistence(timeout:90),"Direct API text request did not complete")
         XCTAssertTrue(response.exists)

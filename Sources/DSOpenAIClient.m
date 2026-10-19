@@ -1,6 +1,7 @@
 #import "DSOpenAIClient.h"
 #import "DSStreamDecoder.h"
 #import "DSUsageStore.h"
+#import "DSAPIDiagnostics.h"
 @implementation DSOpenAIClient {
     DSAPIConfiguration *_configuration;
     NSURLSession *_session;
@@ -11,6 +12,10 @@
     NSDate *_startDate;
     NSString *_requestModel;
     NSDictionary *_reportedUsage;
+    NSInteger _httpStatus;
+    BOOL _rejectingResponse;
+    NSMutableData *_errorBody;
+    NSString *_responseType;
 }
 - (instancetype)initWithConfiguration:(DSAPIConfiguration *)configuration {
     if ((self = [super init])) _configuration = configuration;
@@ -19,6 +24,8 @@
 - (void)complete:(NSString *)reason error:(NSError *)error {
     if (_finished) return;
     _finished = YES;
+    if (error) error=DSAPIAnnotateError(error,@"provider_request",_configuration);
+    else DSAPIRecordOutcome(_configuration,@"succeeded",_startDate ? -_startDate.timeIntervalSinceNow : 0,_httpStatus);
     if (_started) {
         NSString *outcome=error ? ([error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled ? @"cancelled" : @"failed") : @"succeeded";
         NSMutableDictionary *record=[@{@"model":_requestModel ?: _configuration.model ?: @"",
@@ -43,6 +50,7 @@
         return;
     }
     _started = YES; _startDate=NSDate.date; _completion = [completion copy];
+    DSAPIRecordOutcome(_configuration,@"started",0,0);
     NSError *error = nil;
     NSURL *url = [_configuration completionURL:&error];
     if (!url) { [self complete:nil error:error]; return; }
@@ -96,24 +104,39 @@
         [self complete:nil error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]];
     });
 }
+- (NSError *)responseError {
+    NSMutableDictionary *info=[@{NSLocalizedDescriptionKey:@"API response rejected",@"DSAPI.responseType":_responseType ?: @""} mutableCopy];
+    id root=[NSJSONSerialization JSONObjectWithData:_errorBody ?: NSData.data options:0 error:NULL];
+    id provider=[root isKindOfClass:NSDictionary.class] ? root[@"error"] : nil;
+    id code=[provider isKindOfClass:NSDictionary.class] ? provider[@"code"] ?: provider[@"type"] : nil;
+    // Annotation accepts only known provider error identifiers. Never expose the
+    // server's free-form message: it can repeat submitted content or credentials.
+    if ([code isKindOfClass:NSString.class]) info[@"DSAPI.providerCode"]=code;
+    return [NSError errorWithDomain:@"DSAPI.HTTP" code:_httpStatus userInfo:info];
+}
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task
     didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
     NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
     NSInteger status = [http isKindOfClass:NSHTTPURLResponse.class] ? http.statusCode : 0;
     NSString *type = response.MIMEType.lowercaseString;
-    if (status < 200 || status >= 300 ||
-        ![type isEqualToString:@"text/event-stream"]) {
-        handler(NSURLSessionResponseCancel);
-        [self complete:nil error:[NSError errorWithDomain:@"DSAPI.HTTP" code:status
-            userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"API HTTP %ld：需要成功的 SSE 响应。",(long)status]}]];
-    } else handler(NSURLSessionResponseAllow);
+    _httpStatus=status; _responseType=type;
+    _rejectingResponse=status<200 || status>=300 || ![type isEqualToString:@"text/event-stream"];
+    if (_rejectingResponse) _errorBody=[NSMutableData data];
+    handler(NSURLSessionResponseAllow);
 }
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    if (!_finished) [_decoder consume:data];
+    if (_finished) return;
+    if (_rejectingResponse) {
+        NSUInteger room=16*1024-_errorBody.length;
+        if (room) [_errorBody appendData:[data subdataWithRange:NSMakeRange(0,MIN(room,data.length))]];
+        if (data.length>=room) [self complete:nil error:[self responseError]];
+    } else [_decoder consume:data];
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
     if (_finished) return;
-    if (error) [self complete:nil error:error]; else [_decoder endOfInput];
+    if (error) [self complete:nil error:error];
+    else if (_rejectingResponse) [self complete:nil error:[self responseError]];
+    else [_decoder endOfInput];
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
     willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request

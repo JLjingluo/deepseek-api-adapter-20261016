@@ -2,6 +2,9 @@
 #import "DSAPIConfiguration.h"
 #import "DSAPILocalization.h"
 #import "DSUsageViewController.h"
+#import "DSAPIDiagnostics.h"
+#import "DSOpenAIClient.h"
+#import <Security/Security.h>
 @interface DSAPIModelPicker : UITableViewController <UISearchResultsUpdating>
 @property(nonatomic,copy) NSArray<NSString *> *models;
 @property(nonatomic,copy) NSArray<NSString *> *filtered;
@@ -40,6 +43,8 @@
 @property(nonatomic, strong) UIFont *bodyFont;
 @property(nonatomic) BOOL saving;
 @property(nonatomic) BOOL fetchingModels;
+@property(nonatomic,strong) DSOpenAIClient *testClient;
+@property(nonatomic) BOOL testingConnection;
 @property(nonatomic) BOOL showModelsAfterFetch;
 @property(nonatomic,strong) NSURLSession *modelSession;
 @property(nonatomic,copy) NSArray<NSString *> *modelIDs;
@@ -98,15 +103,15 @@
         });
     });
 }
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 7; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 8; }
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
-    return [@[@2,@1,@2,@4,@1,@3,@1][section] integerValue];
+    return [@[@2,@1,@2,@4,@1,@3,@1,@2][section] integerValue];
 }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
-    return DSAPILocalized(@[@"mode",@"providers",@"connection",@"models",@"effort",@"advanced",@"usage"][section]);
+    return DSAPILocalized(@[@"mode",@"providers",@"connection",@"models",@"effort",@"advanced",@"usage",@"diagnostics"][section]);
 }
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
-    return DSAPILocalized(@[@"modeNote",@"providerNote",@"connectionNote",@"modelNote",@"effortNote",@"advancedNote",@"usageNote"][section]);
+    return DSAPILocalized(@[@"modeNote",@"providerNote",@"connectionNote",@"modelNote",@"effortNote",@"advancedNote",@"usageNote",@"diagnosticsNote"][section]);
 }
 - (UITableViewCell *)switchCell:(NSString *)title identifier:(NSString *)identifier on:(BOOL)on action:(SEL)action {
     UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
@@ -117,6 +122,14 @@
     cell.accessoryView=toggle; cell.selectionStyle=UITableViewCellSelectionStyleNone; return cell;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
+    if (path.section==7) {
+        UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text=DSAPILocalized(path.row==0 ? (self.testingConnection ? @"testingConnection" : @"testConnection") : @"lastDiagnostics");
+        cell.textLabel.font=self.bodyFont; cell.textLabel.numberOfLines=2;
+        cell.accessibilityIdentifier=path.row==0 ? @"DSAPI.TestConnection" : @"DSAPI.Diagnostics";
+        cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
+        return cell;
+    }
     if (path.section==0) return path.row==0 ?
         [self switchCell:@"enableAPI" identifier:@"DSAPI.Enabled" on:self.configuration.enabled action:@selector(modeChanged:)] :
         [self switchCell:@"showAPIInChat" identifier:@"DSAPI.ShowInChat" on:self.configuration.showAPIInChat action:@selector(showInChatChanged:)];
@@ -147,10 +160,46 @@
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)path {
     [table deselectRowAtIndexPath:path animated:YES]; [self.view endEditing:YES];
-    if (path.section==6) [self presentViewController:DSAPICreateUsageController(self.bodyFont) animated:YES completion:nil];
+    if (path.section==7) { if (path.row==0) [self testSavedConnection]; else [self showDiagnostics:DSAPILastDiagnostic() error:nil]; }
+    else if (path.section==6) [self presentViewController:DSAPICreateUsageController(self.bodyFont) animated:YES completion:nil];
     else if (path.section==1) [self chooseProvider:[table cellForRowAtIndexPath:path]];
     else if (path.section==4) [self chooseEffort:[table cellForRowAtIndexPath:path]];
     else if (path.section==3 && path.row==3) { if (self.modelIDs.count) [self showModelPicker]; else [self fetchModelsShowingPicker:YES]; }
+}
+- (void)showDiagnostics:(NSDictionary *)record error:(NSError *)error {
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(error ? @"requestFailed" : @"diagnostics") message:[NSString stringWithFormat:@"%@%@",error ? [error.localizedDescription stringByAppendingString:@"\n\n"] : @"",DSAPIDiagnosticText(record)] preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleCancel handler:nil]];
+    if (record.count) [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"copyDiagnostics") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { UIPasteboard.generalPasteboard.string=DSAPIDiagnosticText(record); }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)testSavedConnection {
+    if (self.testingConnection || self.saving || !self.fields[1].enabled) return;
+    self.testingConnection=YES; [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:7] withRowAnimation:UITableViewRowAnimationNone];
+    __weak typeof(self) weakSelf=self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        DSAPIConfiguration *saved=[DSAPIConfiguration loadConfiguration]; saved.timeout=MIN(30,MAX(10,saved.timeout));
+        dispatch_async(dispatch_get_main_queue(),^{
+            typeof(self) self=weakSelf; if (!self || !self.view.window) return;
+            if (!saved.apiKey.length) {
+                NSInteger code=saved.keychainStatus==NSIntegerMax || saved.keychainStatus==0 ? errSecItemNotFound : saved.keychainStatus;
+                NSError *failure=DSAPIAnnotateError([NSError errorWithDomain:NSOSStatusErrorDomain code:code userInfo:nil],@"keychain_read",saved);
+                self.testingConnection=NO; [self.tableView reloadData]; [self showDiagnostics:DSAPILastDiagnostic() error:failure]; return;
+            }
+            self.testClient=[[DSOpenAIClient alloc] initWithConfiguration:saved];
+            [self.testClient startMessages:@[@{@"role":@"user",@"content":@"Reply with OK only."}] reasoning:NO delta:^(NSString *text,NSString *thought) {} completion:^(NSString *reason,NSError *error) {
+                typeof(self) self=weakSelf; if (!self) return;
+                self.testClient=nil; self.testingConnection=NO; [self.tableView reloadData];
+                if (!self.view.window || ([error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled)) return;
+                NSDictionary *record=DSAPILastDiagnostic();
+                if (!error) {
+                    UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"connectionSuccess") message:DSAPIDiagnosticText(record) preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleCancel handler:nil]];
+                    [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"copyDiagnostics") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { UIPasteboard.generalPasteboard.string=DSAPIDiagnosticText(record); }]];
+                    [self presentViewController:alert animated:YES completion:nil];
+                } else [self showDiagnostics:record error:error];
+            }];
+        });
+    });
 }
 - (BOOL)textFieldShouldReturn:(UITextField *)field { [field resignFirstResponder]; return YES; }
 - (void)presentChoices:(UIAlertController *)alert cell:(UITableViewCell *)cell {
@@ -233,7 +282,8 @@
 - (void)automaticModelsChanged:(UISwitch *)sender { self.configuration.automaticModels=sender.on; if (sender.on) [self fetchModelsShowingPicker:NO]; }
 - (void)modeChanged:(UISwitch *)sender { self.configuration.enabled=sender.on; }
 - (void)usageOptionChanged:(UISwitch *)sender { self.configuration.requestUsage=sender.on; }
-- (void)cancel { self.modelGeneration++; [self.modelSession invalidateAndCancel]; self.modelSession=nil; [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)cancel {
+    [self.testClient cancel]; self.testClient=nil; self.modelGeneration++; [self.modelSession invalidateAndCancel]; self.modelSession=nil; [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)save {
     if (self.saving) return;
     [self.view endEditing:YES];
@@ -261,8 +311,9 @@
     self.tableView.userInteractionEnabled=YES;
     if (!self.view.window) return;
     if (!saved) {
+        error=DSAPIAnnotateError(error ?: [NSError errorWithDomain:@"DSAPI.Configuration" code:1 userInfo:nil],@"keychain_save",self.configuration);
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"saveError")
-            message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+            message:[NSString stringWithFormat:@"%@\n%@ (%ld)",error.localizedDescription,error.domain,(long)error.code] preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }

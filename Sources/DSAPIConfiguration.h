@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) BOOL automaticModels;
 @property(nonatomic, copy) NSString *reasoningEffort;
 @property(nonatomic, copy) NSString *apiKey;
+/// OSStatus from the real read; NSIntegerMax means no read was attempted.
+@property(nonatomic) NSInteger keychainStatus;
 + (instancetype)loadConfiguration;
 + (instancetype)loadConfigurationWithoutAPIKey;
 - (BOOL)save:(NSError **)error;

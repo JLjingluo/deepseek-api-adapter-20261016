@@ -2,6 +2,8 @@
 #import "DSAPILocalization.h"
 #import "DSLocalStore.h"
 #import "DSOpenAIClient.h"
+#import "DSAPIDiagnostics.h"
+#import <Security/Security.h>
 #import <CommonCrypto/CommonDigest.h>
 #import "DSVoiceCatalog.h"
 #import "DSAttachmentStore.h"
@@ -75,6 +77,10 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     _stopped = YES; [self.client URLProtocolDidFinishLoading:self];
 }
 - (void)fail:(NSString *)description {
+    [self failWithError:[NSError errorWithDomain:@"DSAPI.Compatibility" code:1 userInfo:@{NSLocalizedDescriptionKey:description ?: @"Local request failed"}] stage:@"local_request"];
+}
+- (void)failWithError:(NSError *)failure stage:(NSString *)stage {
+    NSString *description=failure.localizedDescription;
     if (_stopped) return;
     if ([self.request.URL.path hasSuffix:@"/chat/history_messages"] || [self.request.URL.path hasSuffix:@"/chat_session/fetch_page"]) [NSUserDefaults.standardUserDefaults setObject:description ?: @"history failed" forKey:@"DSAPIAdapter.lastHistorySyncError"];
     if ([self.request.URL.path hasPrefix:@"/api/v0/file/"]) [NSUserDefaults.standardUserDefaults setObject:description ?: @"upload failed" forKey:@"DSAPIAdapter.lastAttachmentError"];
@@ -82,8 +88,11 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     [_upstream cancel]; _upstream = nil;
     if (_assistantID) [DSActiveStreams() removeObjectForKey:_assistantID.stringValue];
     _stopped = YES;
-    [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:@"DSAPI.Compatibility" code:1
-        userInfo:@{NSLocalizedDescriptionKey:description}]];
+    NSError *reported=DSAPIAnnotateError(failure,stage,_loadedConfiguration);
+    NSString *path=self.request.URL.path;
+    BOOL send=[path hasSuffix:@"/chat/completion"] || [path hasSuffix:@"/chat/regenerate"] || [path hasSuffix:@"/chat/continue"] || ([path hasPrefix:@"/api/v0/file/"] && [path containsString:@"upload"]);
+    if (send && !(DSAPIIsLocalGuest() && !DSAPIIsEnabled())) DSAPIPresentRequestFailure(reported);
+    [self.client URLProtocol:self didFailWithError:reported];
 }
 - (void)closeHeartbeat {
     if (_heartbeat) { dispatch_source_cancel(_heartbeat); _heartbeat = nil; }
@@ -441,7 +450,10 @@ static NSString *DSIdentityHash(NSString *value) {
     [self closeHeartbeat];
     [self saveStreamStatus:status];
     if (error) {
-        [self event:@"toast" body:@{@"type":@"error",@"content":error.localizedDescription,@"finish_reason":@"error"}];
+        // Native transport errors are collapsed into a generic retry message.
+        // Present actionable diagnostics through UIKit rather than an unverified
+        // toast wire shape that the native decoder may reject.
+        DSAPIPresentRequestFailure(DSAPIAnnotateError(error,@"provider_request",_loadedConfiguration));
     }
     [self sendMessageStatus:status]; [self event:@"finish" body:@{}];
     if (_stopped) return;
@@ -452,7 +464,11 @@ static NSString *DSIdentityHash(NSString *value) {
 }
 - (void)chat:(NSDictionary *)p {
     DSAPIConfiguration *config = _loadedConfiguration;
-    if (!config.apiKey.length) { [self fail:@"请先在 API 设置中填写 Base URL、API Key 和模型名。"]; return; }
+    if (!config.apiKey.length) {
+        NSInteger status=config.keychainStatus;
+        if (status==NSIntegerMax || status==errSecSuccess) status=errSecItemNotFound;
+        [self failWithError:[NSError errorWithDomain:NSOSStatusErrorDomain code:status userInfo:nil] stage:@"keychain_read"]; return;
+    }
     NSArray *fileIDs=[p[@"ref_file_ids"] isKindOfClass:NSArray.class] ? p[@"ref_file_ids"] : @[];
     NSArray *files=[DSAttachmentStore.shared files:fileIDs];
     NSError *attachmentError=nil;
