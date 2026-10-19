@@ -120,7 +120,14 @@ def add_runtime_observer(app):
 
 def sign_simulator_app(app, entitlement_path):
     for extension in sorted(app.rglob('*.appex'), key=lambda p: len(p.parts), reverse=True):
-        run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(extension)])
+        signing_path=entitlement_path
+        values=plistlib.loads(entitlement_path.read_bytes())
+        if values.get('application-identifier'):
+            extension_id=plistlib.loads((extension/'Info.plist').read_bytes())['CFBundleIdentifier']
+            values['application-identifier']='DSAPITEST0.'+extension_id
+            signing_path=extension.parent/(extension.name+'.entitlements.plist')
+            signing_path.write_bytes(plistlib.dumps(values))
+        run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(signing_path), str(extension)])
     run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(entitlement_path), str(app)])
 
 
@@ -287,6 +294,11 @@ def probe():
     # Device App Group entitlements are restricted on the macOS host and cannot
     # be granted by this ad-hoc test signature. Do not copy them into it.
     entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
+    if report.get('direct_live_api'):
+        # Real Security.framework access needs an application identifier and a
+        # matching default group, just like a correctly signed device install.
+        entitlements['application-identifier']='DSAPITEST0.'+bundle
+        entitlements['keychain-access-groups']=['DSAPITEST0.'+bundle]
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
