@@ -244,7 +244,10 @@ final class CaptureTests: XCTestCase {
     }
     #if DSAPI_LIVE_UI
     func testNativeDirectAPISetup() throws {
-        let app=openNativeApp(); openAPISettings(app)
+        let app=openNativeApp()
+        let skip=app.buttons["DSAPI.SkipLogin"].firstMatch
+        if skip.exists && skip.isHittable { skip.tap(); XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:25)) }
+        openAPISettings(app)
         let key=app.secureTextFields["API Key"].firstMatch
         XCTAssertTrue(reveal(app,key))
         let keyReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in key.isEnabled },object:app)

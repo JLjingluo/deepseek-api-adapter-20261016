@@ -344,7 +344,7 @@ def probe():
     values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
     values['DSAPIAdapter.configuration.v1']={'enabled':startup_mode=='api'}
     values['DSAPIAdapter.directLiveTest']=report['direct_live_api']
-    values['DSAPIAdapter.probeGuestContext']=os.environ.get('PROBE_UI_TEST_FOCUS')=='guest'
+    values['DSAPIAdapter.probeGuestContext']=os.environ.get('PROBE_UI_TEST_FOCUS') in ('guest','direct')
     if report.get('mock_api_base_url'):
         values['DSAPIAdapter.localTestFixture']={'baseURL':report['mock_api_base_url']}
         if not report['direct_live_api']:
