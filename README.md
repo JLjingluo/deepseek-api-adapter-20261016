@@ -1,5 +1,7 @@
 # DeepSeek 2.6.2 — optional API chat, test 1
 
+**Open device issue (2026-10-19):** the user reports generic network failures for API text and images on a signed physical iPhone. The cause is not yet established. Candidate 58 is a sidebar-layout preview and does not resolve or certify this network issue. The earlier simulator live-image test used a local forwarding fixture and test credential loading; it did not exercise production Keychain access plus direct provider networking on a physical device.
+
 This is a complete unsigned test IPA based on the supplied original application. Original login, account footer, settings and chat UI remain. A native **API Settings** row is added to the original account/settings group. A local Guest option skips login without authenticating an official account.
 
 API settings support provider presets without keys, HTTPS Base URL, manually entered Keychain API Key, automatic `/models` discovery and manual models, optional thinking model, reasoning effort, system prompt, timeout and usage tracking. An optional setting shows an API shortcut in the conversation sidebar. A clean install defaults to original-service mode. Save and restart after changing modes.
