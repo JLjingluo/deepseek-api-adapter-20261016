@@ -294,13 +294,17 @@ final class CaptureTests: XCTestCase {
         // A full process restart already happened after Save. Return through
         // the original settings close control instead of adding an unrelated
         // second cold simulator launch before sending the acceptance messages.
-        let nativeSettings=app.navigationBars["DSAPISettingsView"].firstMatch
-        if nativeSettings.exists {
-            nativeSettings.coordinate(withNormalizedOffset:CGVector(dx:0.94,dy:0.5)).tap()
-        }
+        capture(app,"direct-return-original-settings")
+        // UIKit refreshes the native bar's identifier when its presented
+        // controller closes. Select the actual remaining bar by structure.
+        let nativeSettings=try XCTUnwrap(app.navigationBars.allElementsBoundByIndex.last)
+        nativeSettings.coordinate(withNormalizedOffset:CGVector(dx:0.94,dy:0.5)).tap()
+        XCTAssertTrue(app.cells["DSAPI.APISettings"].firstMatch.waitForNonExistence(timeout:10),"Original settings close control did not dismiss the sheet")
         let closeSidebar=app.buttons["Close sidebar"].firstMatch
         if closeSidebar.exists && closeSidebar.isHittable { closeSidebar.tap() }
         let chat=app
+        capture(chat,"direct-return-chat-after-keychain-restart")
+        print("DSAPI_DIRECT_RETURN_CHAT_BEGIN\n"+chat.debugDescription+"\nDSAPI_DIRECT_RETURN_CHAT_END")
         let input=try XCTUnwrap(chat.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         enterPrompt("请把数字 173 和 286 相加，只回复结果。",into:input,in:chat)
         chat.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
