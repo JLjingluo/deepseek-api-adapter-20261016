@@ -246,7 +246,9 @@ final class CaptureTests: XCTestCase {
     func testNativeDirectAPISetup() throws {
         let app=openNativeApp(); openAPISettings(app)
         let key=app.secureTextFields["API Key"].firstMatch
-        XCTAssertTrue(reveal(app,key)); XCTAssertTrue(key.isEnabled)
+        XCTAssertTrue(reveal(app,key))
+        let keyReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in key.isEnabled },object:app)
+        XCTAssertEqual(XCTWaiter.wait(for:[keyReady],timeout:30),.completed)
         key.press(forDuration:1.2); _=dismissKeyboardHelp(app)
         let paste=app.menuItems["Paste"].firstMatch.exists ? app.menuItems["Paste"].firstMatch : app.buttons["Paste"].firstMatch
         XCTAssertTrue(paste.waitForExistence(timeout:5)); paste.tap()
