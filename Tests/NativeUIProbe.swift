@@ -248,25 +248,30 @@ final class CaptureTests: XCTestCase {
         let skip=app.buttons["DSAPI.SkipLogin"].firstMatch
         if skip.exists && skip.isHittable { skip.tap(); XCTAssertTrue(app.buttons["open_sidebar"].firstMatch.waitForExistence(timeout:25)) }
         openAPISettings(app)
+        // Enter the address/model through the real fields, using their native
+        // clear controls rather than guessing the text insertion position.
+        for (label,value) in [("Base URL","https://api.deepseek.com/v1"),("Model","deepseek-chat")] {
+            let field=app.textFields[label].firstMatch; XCTAssertTrue(reveal(app,field,up:label != "Base URL"))
+            field.tap(); _=dismissKeyboardHelp(app)
+            let clear=field.buttons.firstMatch; XCTAssertTrue(clear.waitForExistence(timeout:5)); clear.tap()
+            field.typeText(value+"\n"); _=dismissKeyboardHelp(app)
+            XCTAssertEqual(field.value as? String,value)
+        }
         let key=app.secureTextFields["API Key"].firstMatch
-        XCTAssertTrue(reveal(app,key))
+        XCTAssertTrue(reveal(app,key,up:false))
         let keyReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in key.isEnabled },object:app)
         XCTAssertEqual(XCTWaiter.wait(for:[keyReady],timeout:30),.completed)
-        key.press(forDuration:1.2); _=dismissKeyboardHelp(app)
+        key.tap(); _=dismissKeyboardHelp(app); key.press(forDuration:1.2)
+        if dismissKeyboardHelp(app) { key.press(forDuration:1.2) }
+        let pasteReady=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in app.menuItems["Paste"].firstMatch.exists || app.buttons["Paste"].firstMatch.exists },object:app)
+        XCTAssertEqual(XCTWaiter.wait(for:[pasteReady],timeout:8),.completed)
         let paste=app.menuItems["Paste"].firstMatch.exists ? app.menuItems["Paste"].firstMatch : app.buttons["Paste"].firstMatch
-        XCTAssertTrue(paste.waitForExistence(timeout:5)); paste.tap()
+        paste.tap()
         let allow=XCUIApplication(bundleIdentifier:"com.apple.springboard").buttons["Allow Paste"].firstMatch
         if allow.exists && allow.isHittable { allow.tap() }
         // Never type, print, compare, or capture the actual credential in XCTest.
         let pastedValue=(key.value as? String) ?? ""; XCTAssertTrue(!pastedValue.isEmpty && pastedValue != "API Key")
         if app.keyboards.firstMatch.exists { key.typeText("\n") }
-        let base=app.textFields["Base URL"].firstMatch
-        XCTAssertTrue(reveal(app,base,up:false)); base.tap()
-        let oldBase=(base.value as? String) ?? ""
-        base.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:oldBase.count)+"https://api.deepseek.com/v1\n")
-        let model=app.textFields["Model"].firstMatch; XCTAssertTrue(reveal(app,model)); model.tap()
-        let oldModel=(model.value as? String) ?? ""
-        model.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:oldModel.count)+"deepseek-chat\n")
         let enabled=app.switches["DSAPI.Enabled"].firstMatch; XCTAssertTrue(reveal(app,enabled,up:false))
         if (enabled.value as? String) != "1" { enabled.tap() }
         app.buttons["DSAPI.Save"].tap()
@@ -301,6 +306,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(response.waitForExistence(timeout:10))
         capture(chat,"direct-official-text-after-keychain-restart")
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
+        Thread.sleep(forTimeInterval:12) // Allow the bounded observer to capture the completed request.
     }
     func testNativeLiveAPIImage() throws {
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")

@@ -56,10 +56,7 @@ def capture_startup_threads():
 
 def launch_application(device, bundle):
     args = ['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle]
-    child_env=os.environ.copy()
-    if os.environ.get('PROBE_UI_TEST_FOCUS')=='direct':
-        child_env['SIMCTL_CHILD_DSAPI_TEST_API_KEY']=os.environ.get('TEST_API_KEY','')
-    process = subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=child_env)
+    process = subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     try:
         output, _ = process.communicate(timeout=8)
     except subprocess.TimeoutExpired:
@@ -413,6 +410,12 @@ def probe():
             except ProcessLookupError:
                 pass
     report['pre_xctest_stopped_pids']=stopped_pids
+    if report.get('direct_live_api'):
+        # Feed simctl through stdin, never command arguments, files or logs.
+        # A cold smoke launch may not start; clipboard setup must not depend on it.
+        copied=subprocess.run(['xcrun','simctl','pbcopy',device],input=os.environ['TEST_API_KEY'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=45)
+        report['direct_clipboard_prepared']=copied.returncode==0
+        if copied.returncode: raise RuntimeError('Could not prepare disposable secure-field clipboard')
     collect_ui_observations(device)
     if report.get('ui_test_exit_code')==0: report['process_alive']=True
     if adapter_enabled and runtime_report.is_file():

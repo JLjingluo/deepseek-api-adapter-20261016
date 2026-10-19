@@ -152,10 +152,7 @@ static void DSPresentAPIProbe(void) {
 }
 static void DSPrepareMockConfiguration(void) {
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.directLiveTest"]) {
-        // Only the separate initial smoke launch receives this process variable.
-        // XCTest pastes it through the real secure text field; no read/save hook.
-        const char *key=getenv("DSAPI_TEST_API_KEY");
-        if (key && key[0]) { UIPasteboard.generalPasteboard.string=[NSString stringWithUTF8String:key]; unsetenv("DSAPI_TEST_API_KEY"); }
+        // Direct mode deliberately leaves both Keychain methods untouched.
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.testKeychainBypassed"];
         return;
     }
