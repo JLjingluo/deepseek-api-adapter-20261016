@@ -3,7 +3,7 @@
 Uses a disposable, independently compiled app and a non-secret sentinel. Nothing
 here is included in the production adapter or replaces Keychain implementations.
 """
-import json, pathlib, plistlib, subprocess, time
+import json, os, pathlib, plistlib, subprocess, time
 
 
 def select_keychain_entitlements(device, root, diagnostics, run, bundle):
@@ -29,6 +29,7 @@ def select_keychain_entitlements(device, root, diagnostics, run, bundle):
     self.window.rootViewController=[UIViewController new];
     [self.window makeKeyAndVisible];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        [[NSFileManager defaultManager] createDirectoryAtPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"] withIntermediateDirectories:YES attributes:nil error:NULL];
         NSDictionary *q=@{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
           (__bridge id)kSecAttrService:@"DSAPI.Preflight",(__bridge id)kSecAttrAccount:@"sentinel"};
         SecItemDelete((__bridge CFDictionaryRef)q);
@@ -57,10 +58,10 @@ int main(int argc,char **argv) { @autoreleasepool { return UIApplicationMain(arg
     sandbox={'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True}
     identity='DSAPITEST0.'+probe_id
     variants=[
+        {'keychain-access-groups':[identity]},
         {'com.apple.application-identifier':identity,'keychain-access-groups':[identity]},
         {'application-identifier':identity,'keychain-access-groups':[identity]},
         {**sandbox,'com.apple.application-identifier':identity,'keychain-access-groups':[identity]},
-        {'keychain-access-groups':[identity]},
         {'com.apple.application-identifier':identity},
         {'application-identifier':identity},
         {},
@@ -74,15 +75,25 @@ int main(int argc,char **argv) { @autoreleasepool { return UIApplicationMain(arg
         container=pathlib.Path(run(['xcrun','simctl','get_app_container',device,probe_id,'data']).stdout.strip())
         result_path=container/'Documents/keychain-preflight.json'
         result_path.unlink(missing_ok=True)
-        launch=run(['xcrun','simctl','launch',device,probe_id],check=False,timeout=30)
+        try:
+            launch=run(['xcrun','simctl','launch',device,probe_id],check=False,timeout=30)
+            launch_code=launch.returncode
+        except subprocess.TimeoutExpired:
+            launch_code=124
         for _ in range(15):
             if result_path.exists():break
             time.sleep(1)
         result=json.loads(result_path.read_text()) if result_path.exists() else None
-        attempt={'entitlements':entitlements,'launch_exit_code':launch.returncode,'result':result}
+        attempt={'entitlements':entitlements,'launch_exit_code':launch_code,'result':result}
         attempts.append(attempt)
         (diagnostics/'keychain-preflight.json').write_text(json.dumps(attempts,indent=2))
-        run(['xcrun','simctl','terminate',device,probe_id],check=False,timeout=20)
+        # simctl launch/terminate can hang on a cold simulator even while the
+        # app is running. The saved result, not the RPC return, is the gate.
+        processes=subprocess.run(['pgrep','-x','KeychainPreflight'],text=True,stdout=subprocess.PIPE)
+        for pid in processes.stdout.split():
+            if pid.isdecimal():
+                try:os.kill(int(pid),9)
+                except ProcessLookupError:pass
         if result and result['add']==0 and result['read']==0 and result['matches']:
             # Rebind only the public test identifiers; no credential data exists.
             return {k:([v[0].replace(probe_id,bundle)] if isinstance(v,list)
