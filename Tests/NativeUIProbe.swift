@@ -291,10 +291,16 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(success.waitForExistence(timeout:60)); capture(app,"direct-saved-connection-test")
         success.buttons.firstMatch.tap()
         app.buttons["DSAPI.Cancel"].tap()
-        // The original settings sheet is underneath API settings.
-        if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
-        app.terminate()
-        let chat=openNativeApp()
+        // A full process restart already happened after Save. Return through
+        // the original settings close control instead of adding an unrelated
+        // second cold simulator launch before sending the acceptance messages.
+        let nativeSettings=app.navigationBars["DSAPISettingsView"].firstMatch
+        if nativeSettings.exists {
+            nativeSettings.coordinate(withNormalizedOffset:CGVector(dx:0.94,dy:0.5)).tap()
+        }
+        let closeSidebar=app.buttons["Close sidebar"].firstMatch
+        if closeSidebar.exists && closeSidebar.isHittable { closeSidebar.tap() }
+        let chat=app
         let input=try XCTUnwrap(chat.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         enterPrompt("请把数字 173 和 286 相加，只回复结果。",into:input,in:chat)
         chat.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
@@ -305,15 +311,15 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(read.waitForExistence(timeout:90),"Direct API text request did not complete")
         XCTAssertTrue(response.waitForExistence(timeout:10))
         capture(chat,"direct-official-text-after-keychain-restart")
-        try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
+        try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色",in:chat)
         Thread.sleep(forTimeInterval:12) // Allow the bounded observer to capture the completed request.
     }
     func testNativeLiveAPIImage() throws {
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
     }
     #endif
-    private func runNativeImage(prompt:String,expected:String) throws {
-        let app=openNativeApp()
+    private func runNativeImage(prompt:String,expected:String,in existingApp:XCUIApplication?=nil) throws {
+        let app=existingApp ?? openNativeApp()
         let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         input.tap()
         dismissKeyboardHelp(app)

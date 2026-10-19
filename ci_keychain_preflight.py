@@ -58,11 +58,11 @@ int main(int argc,char **argv) { @autoreleasepool { return UIApplicationMain(arg
     sandbox={'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True}
     identity='DSAPITEST0.'+probe_id
     variants=[
+        {'com.apple.application-identifier':identity},
         {'keychain-access-groups':[identity]},
         {'com.apple.application-identifier':identity,'keychain-access-groups':[identity]},
         {'application-identifier':identity,'keychain-access-groups':[identity]},
         {**sandbox,'com.apple.application-identifier':identity,'keychain-access-groups':[identity]},
-        {'com.apple.application-identifier':identity},
         {'application-identifier':identity},
         {},
     ]
@@ -89,10 +89,11 @@ int main(int argc,char **argv) { @autoreleasepool { return UIApplicationMain(arg
         (diagnostics/'keychain-preflight.json').write_text(json.dumps(attempts,indent=2))
         # simctl launch/terminate can hang on a cold simulator even while the
         # app is running. The saved result, not the RPC return, is the gate.
-        processes=subprocess.run(['pgrep','-x','KeychainPreflight'],text=True,stdout=subprocess.PIPE)
-        for pid in processes.stdout.split():
-            if pid.isdecimal():
-                try:os.kill(int(pid),9)
+        processes=subprocess.run(['ps','-axo','pid=,comm='],text=True,stdout=subprocess.PIPE)
+        for line in processes.stdout.splitlines():
+            parts=line.strip().split(None,1)
+            if len(parts)==2 and parts[1].endswith('/KeychainPreflight.app/KeychainPreflight'):
+                try:os.kill(int(parts[0]),9)
                 except ProcessLookupError:pass
         if result and result['add']==0 and result['read']==0 and result['matches']:
             # Rebind only the public test identifiers; no credential data exists.
