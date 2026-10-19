@@ -266,6 +266,7 @@
         [alert addAction:[UIAlertAction actionWithTitle:DSAPILocalized(@"ok") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }
+    [NSNotificationCenter.defaultCenter postNotificationName:@"DSAPIAdapter.SettingsChanged" object:nil];
     if (self.configuration.enabled!=DSAPIIsEnabled()) {
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:DSAPILocalized(@"restartTitle") message:DSAPILocalized(@"modeNote") preferredStyle:UIAlertControllerStyleAlert];
         __weak typeof(self) weakSelf=self;

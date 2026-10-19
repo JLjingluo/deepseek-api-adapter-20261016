@@ -81,6 +81,8 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout:10)); entry.tap()
         XCTAssertTrue(app.switches["DSAPI.ShowInChat"].firstMatch.waitForExistence(timeout:10))
         app.switches["DSAPI.ShowInChat"].firstMatch.tap(); app.buttons["DSAPI.Save"].tap()
+        XCTAssertTrue(entry.waitForNonExistence(timeout:10),"Hidden shortcut remains after saving, before restart")
+        capture(app,"sidebar-api-option-off-without-restart")
         app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20)); app.buttons["open_sidebar"].tap()
         XCTAssertFalse(app.buttons["DSAPI.ConversationAPI"].firstMatch.exists)
         capture(app,"sidebar-api-option-off")

@@ -89,6 +89,7 @@ static void requireSignIn(void) {
 - (void)stopLoading {}
 @end
 static char DSSkipButtonKey, DSSidebarAPIKey, DSBaseInsetKey;
+static __weak UIViewController *DSSidebarController;
 static void (*welcomeLoad)(id,SEL), (*loginLoad)(id,SEL), (*sidebarLayout)(id,SEL),(*footerLayout)(id,SEL),(*welcomeLayout)(id,SEL),(*loginLayout)(id,SEL);
 static IMP replace(Class cls,SEL selector,IMP replacement) {
     Method method=class_getInstanceMethod(cls,selector); if (!method) return NULL;
@@ -158,9 +159,20 @@ static UIImageView *firstImage(UIView *view) {
     for (UIView *child in view.subviews) { UIImageView *image=firstImage(child); if (image) return image; }
     return nil;
 }
+static UICollectionView *sidebarList(UIView *view) {
+    if ([view isKindOfClass:UICollectionView.class] && [NSStringFromClass(view.class) hasSuffix:@"SessionListCollectionView"]) return (UICollectionView *)view;
+    for (UIView *child in view.subviews) { UICollectionView *list=sidebarList(child); if (list) return list; } return nil;
+}
+static UIView *copyDecoration(UIView *source) {
+    UIView *copy=[UIView new]; copy.frame=source.frame; copy.backgroundColor=source.backgroundColor;
+    copy.alpha=source.alpha; copy.hidden=source.hidden; copy.layer.cornerRadius=source.layer.cornerRadius;
+    copy.clipsToBounds=source.clipsToBounds; copy.userInteractionEnabled=NO;
+    for (UIView *child in source.subviews) [copy addSubview:copyDecoration(child)];
+    return copy;
+}
 static void layoutSidebar(id self,SEL selector) {
     if (sidebarLayout) sidebarLayout(self,selector);
-    UIViewController *controller=self;
+    UIViewController *controller=self; DSSidebarController=controller;
     UIView *footer=find(controller.view,@"FooterView"); if (!footer || !footer.superview) return;
     UILabel *label=firstLabel(footer);
     if (DSAPIIsLocalGuest() && label && ![label.text isEqual:DSAPILocalized(@"guest")]) label.text=DSAPILocalized(@"guest");
@@ -172,15 +184,16 @@ static void layoutSidebar(id self,SEL selector) {
         [button addTarget:self action:NSSelectorFromString(@"dsapi_openAPI") forControlEvents:UIControlEventTouchUpInside];
         UIImageView *icon=[UIImageView new]; icon.tag=8101; icon.contentMode=UIViewContentModeCenter; icon.clipsToBounds=YES;
         UILabel *title=[UILabel new]; title.tag=8102;
-        UIImageView *accessory=[UIImageView new]; accessory.tag=8103; accessory.contentMode=UIViewContentModeScaleAspectFit;
+        UIView *accessory=[UIView new]; accessory.tag=8103;
         for (UIView *child in @[icon,title,accessory]) { child.userInteractionEnabled=NO; child.isAccessibilityElement=NO; [button addSubview:child]; }
         objc_setAssociatedObject(self,&DSSidebarAPIKey,button,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     button.hidden=!enabled;
     // Use the native footer's parent so its clipping, sidebar transition and
     // safe-area treatment also apply to the added row.
-    if (button && button.superview!=footer.superview) [footer.superview insertSubview:button belowSubview:footer];
-    UICollectionView *list=(UICollectionView *)find(controller.view,@"UICollectionView");
+    if (!enabled) [button removeFromSuperview];
+    else if (button && button.superview!=footer.superview) [footer.superview insertSubview:button belowSubview:footer];
+    UICollectionView *list=sidebarList(controller.view);
     if (list && !objc_getAssociatedObject(list,&DSBaseInsetKey)) objc_setAssociatedObject(list,&DSBaseInsetKey,[NSValue valueWithUIEdgeInsets:list.contentInset],OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CGFloat height=footer.bounds.size.height;
     if (height<=0) return;
@@ -191,7 +204,7 @@ static void layoutSidebar(id self,SEL selector) {
     }
     if (!enabled) return;
     button.frame=CGRectOffset(footer.frame,0,-height);
-    button.backgroundColor=footer.backgroundColor ?: UIColor.clearColor;
+    button.backgroundColor=footer.backgroundColor ?: controller.view.backgroundColor ?: UIColor.systemBackgroundColor;
     button.accessibilityLabel=DSAPILocalized(@"api");
     UILabel *title=[button viewWithTag:8102];
     title.text=DSAPILocalized(@"api"); title.font=label.font ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -205,12 +218,17 @@ static void layoutSidebar(id self,SEL selector) {
     icon.image=[UIImage systemImageNamed:@"network" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:MIN(iconRect.size.width,iconRect.size.height)*0.58 weight:UIImageSymbolWeightRegular]];
     // Preserve the trailing action's location and weight, without copying the
     // account avatar or any account-specific text into the API shortcut.
-    UIImageView *accessory=[button viewWithTag:8103];
-    accessory.image=[UIImage systemImageNamed:@"ellipsis" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightSemibold]];
-    accessory.tintColor=UIColor.tertiaryLabelColor;
-    CGFloat trailing=MAX(CGRectGetMaxX(titleRect)+12,footer.bounds.size.width-48);
-    accessory.frame=CGRectMake(trailing,(height-24)/2,24,24);
-    title.frame=CGRectMake(titleRect.origin.x,titleRect.origin.y,MAX(0,trailing-12-titleRect.origin.x),titleRect.size.height);
+    UIView *accessory=[button viewWithTag:8103];
+    for (UIView *child in accessory.subviews) [child removeFromSuperview];
+    UIView *nativeAccessory=nil;
+    for (UIView *child in footer.subviews) if ([NSStringFromClass(child.class) hasSuffix:@"AutoStackLayout"]) { nativeAccessory=child; break; }
+    if (nativeAccessory) {
+        accessory.frame=[nativeAccessory convertRect:nativeAccessory.bounds toView:footer];
+        UIView *decoration=copyDecoration(nativeAccessory); decoration.frame=accessory.bounds; [accessory addSubview:decoration];
+    }
+    accessory.hidden=!nativeAccessory;
+    // Keep the native label width and its truncation behaviour as well.
+    title.frame=titleRect;
 }
 static void layoutFooter(id self,SEL selector) {
     if (footerLayout) footerLayout(self,selector);
@@ -220,6 +238,10 @@ static void layoutFooter(id self,SEL selector) {
     }
 }
 void DSInstallGuestIntegration(void) {
+    [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.SettingsChanged" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        UIViewController *sidebar=DSSidebarController;
+        if (sidebar.isViewLoaded) { [sidebar.view setNeedsLayout]; [sidebar.view layoutIfNeeded]; }
+    }];
     [NSNotificationCenter.defaultCenter addObserverForName:@"DSAPIAdapter.GuestSignInRequired" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { requireSignIn(); }];
     Class footerClass=NSClassFromString(@"_TtCC13DeepSeek_Chat25SessionListViewController10FooterView");
     footerLayout=(void *)replace(footerClass,@selector(layoutSubviews),(IMP)layoutFooter);
