@@ -273,7 +273,7 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout:15))
         XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","Restart")).firstMatch.exists,"Real Keychain save did not reach restart confirmation")
         app.alerts.buttons.firstMatch.tap()
-        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        app.terminate(); _ = openNativeApp()
         // Re-open the settings page after a genuine process relaunch. The key
         // field now comes from the production Security.framework implementation.
         openAPISettings(app)
