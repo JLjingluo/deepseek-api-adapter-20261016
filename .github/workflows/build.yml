@@ -70,7 +70,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           test -f build/component-tests.log
-          gh release create "component-failure-${GITHUB_RUN_ID}" --target "$GITHUB_SHA" --prerelease \
+          gh release create "component-failure-${GITHUB_RUN_ID}" --target "$GITHUB_REF_NAME" --prerelease \
             --title "Component failure diagnostics" --notes "Compiler and fixture output only; no live API key or input IPA." build/component-tests.log
       - name: Compile iOS arm64 library
         run: |
@@ -99,7 +99,7 @@ jobs:
         run: |
           test -f build/component-tests.log
           TAG="component-failure-${GITHUB_RUN_ID}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Compiler or component failure" --notes "Compiler and disposable fixture output only."
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_REF_NAME" --prerelease --title "Compiler or component failure" --notes "Compiler and disposable fixture output only."
           gh release upload "$TAG" build/component-tests.log --clobber
       - name: Obtain the exact encrypted source package
         env:
@@ -121,11 +121,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           TAG="candidate-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease \
+          gh release create "$TAG" --target "$GITHUB_REF_NAME" --prerelease \
             --title "Experimental unsigned IPA ${GITHUB_RUN_NUMBER}" \
             --notes "实验性未签名整包，需自行签名。构建及资源校验不代表启动、UI 或功能验收通过；不能称为 100% 等价成品。附件、搜索、语音与云分享仍有未实现部分。请阅读 verification.json。" \
             build/DSAPIAdapter.dylib build/SHA256SUMS build/*.ipa build/*.verification.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: DeepSeek-API-experimental-unsigned
           path: |
