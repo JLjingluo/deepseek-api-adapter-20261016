@@ -78,6 +78,13 @@ subjectAltName=DNS:localhost,IP:127.0.0.1
             if self.path != '/v1/chat/completions' or not record['dummy_authorization_valid']:
                 self.send_error(401)
                 return
+            text=messages[-1].get('content') if messages else None
+            diagnostic_status={'API diagnostic 401 test':401,'API diagnostic 402 test':402}.get(text) if isinstance(text,str) else None
+            if diagnostic_status:
+                record['scenario']='diagnostic'; record['http_status']=diagnostic_status
+                with lock: (pathlib.Path(diagnostics)/'mock-api.json').write_text(json.dumps(records,indent=2))
+                payload=json.dumps({'error':{'code':'invalid_api_key' if diagnostic_status==401 else 'insufficient_quota','message':'ci-dummy-key must never appear in copied diagnostics'}}).encode()
+                self.send_response(diagnostic_status); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(payload))); self.end_headers(); self.wfile.write(payload); return
             if os.environ.get('PROBE_LIVE_API')=='true':
                 secret=os.environ.get('TEST_API_KEY','')
                 if not secret: self.send_error(503); return

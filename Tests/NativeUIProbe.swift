@@ -40,6 +40,30 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:10))
     }
 
+    func testNativeAPIErrors() throws {
+        #if DSAPI_MOCK_UI
+        let app=openNativeApp()
+        for status in [401,402] {
+            let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
+            enterPrompt("API diagnostic \(status) test",into:input,in:app)
+            app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
+            let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:25))
+            XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","HTTP \(status)")).firstMatch.exists)
+            capture(app,"actionable-api-error-\(status)")
+            alert.buttons["Copy details"].tap()
+            let copied=UIPasteboard.general.string ?? ""
+            XCTAssertTrue(copied.contains("\(status)") && copied.contains("provider_request"))
+            XCTAssertFalse(copied.contains("ci-dummy-key") || copied.contains("API diagnostic"))
+        }
+        openAPISettings(app)
+        let test=app.cells["DSAPI.TestConnection"].staticTexts.firstMatch
+        XCTAssertTrue(reveal(app,test)); test.tap()
+        let success=app.alerts["Connection succeeded"].firstMatch
+        XCTAssertTrue(success.waitForExistence(timeout:25)); capture(app,"saved-api-connection-test")
+        success.buttons.firstMatch.tap(); app.buttons["DSAPI.Cancel"].tap()
+        #endif
+    }
+
     func testNativeAPIOptions() throws {
         #if DSAPI_MOCK_UI
         let app=openNativeApp(); openAPISettings(app)
@@ -251,6 +275,13 @@ final class CaptureTests: XCTestCase {
         let ready=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in app.buttons["DSAPI.Save"].firstMatch.isEnabled },object:app)
         XCTAssertEqual(XCTWaiter.wait(for:[ready],timeout:15),.completed)
         let restoredValue=(app.secureTextFields["API Key"].firstMatch.value as? String) ?? ""; XCTAssertTrue(!restoredValue.isEmpty && restoredValue != "API Key","Saved key was not read back after relaunch")
+        let test=app.cells["DSAPI.TestConnection"].staticTexts.firstMatch
+        if test.exists {
+            XCTAssertTrue(reveal(app,test)); test.tap()
+            let success=app.alerts["Connection succeeded"].firstMatch
+            XCTAssertTrue(success.waitForExistence(timeout:60)); capture(app,"direct-saved-connection-test")
+            success.buttons.firstMatch.tap()
+        }
         app.buttons["DSAPI.Cancel"].tap()
         // The original settings sheet is underneath API settings.
         if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
@@ -264,7 +295,7 @@ final class CaptureTests: XCTestCase {
         // answer text and the completed native read-aloud control.
         let read=chat.buttons["DSAPI.ReadAloud"].firstMatch
         XCTAssertTrue(read.waitForExistence(timeout:90),"Direct API text request did not complete")
-        XCTAssertTrue(response.exists)
+        XCTAssertTrue(response.waitForExistence(timeout:10))
         capture(chat,"direct-official-text-after-keychain-restart")
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
     }

@@ -17,7 +17,7 @@ on:
       test_focus:
         description: Run the complete native suite or focus on settings
         type: choice
-        options: [all, settings, regeneration, startup, switching, attachment, liveimage, guest, options, history, direct]
+        options: [all, settings, regeneration, startup, switching, attachment, liveimage, guest, options, history, direct, errors]
         default: all
       startup_mode:
         description: Persist API mode before launch to reproduce restart failures
