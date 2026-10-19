@@ -281,12 +281,10 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[ready],timeout:15),.completed)
         let restoredValue=(app.secureTextFields["API Key"].firstMatch.value as? String) ?? ""; XCTAssertTrue(!restoredValue.isEmpty && restoredValue != "API Key","Saved key was not read back after relaunch")
         let test=app.cells["DSAPI.TestConnection"].staticTexts.firstMatch
-        if test.exists {
-            XCTAssertTrue(reveal(app,test)); test.tap()
-            let success=app.alerts["Connection succeeded"].firstMatch
-            XCTAssertTrue(success.waitForExistence(timeout:60)); capture(app,"direct-saved-connection-test")
-            success.buttons.firstMatch.tap()
-        }
+        XCTAssertTrue(reveal(app,test)); test.tap()
+        let success=app.alerts["Connection succeeded"].firstMatch
+        XCTAssertTrue(success.waitForExistence(timeout:60)); capture(app,"direct-saved-connection-test")
+        success.buttons.firstMatch.tap()
         app.buttons["DSAPI.Cancel"].tap()
         // The original settings sheet is underneath API settings.
         if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
