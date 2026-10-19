@@ -17,7 +17,7 @@ on:
       test_focus:
         description: Run the complete native suite or focus on settings
         type: choice
-        options: [all, settings, regeneration, startup, switching, attachment, liveimage, guest, options, history]
+        options: [all, settings, regeneration, startup, switching, attachment, liveimage, guest, options, history, direct]
         default: all
       startup_mode:
         description: Persist API mode before launch to reproduce restart failures
@@ -77,6 +77,24 @@ jobs:
           PROBE_STARTUP_MODE: ${{ inputs.startup_mode }}
           PROBE_UI_TEST_FOCUS: ${{ inputs.test_focus }}
         run: python3 ci_probe_simulator.py original.ipa
+      - name: Remove temporary credentials from all published diagnostics
+        if: always()
+        env:
+          TEST_API_KEY: ${{ inputs.live_api && secrets.DSAPI_TEMPORARY_TEST_KEY || '' }}
+        run: |
+          python3 - <<'PY_SANITIZE'
+          import os,pathlib
+          secret=os.environ.get('TEST_API_KEY','').encode()
+          if secret:
+              for path in pathlib.Path('diagnostics').rglob('*'):
+                  if path.is_file():
+                      data=path.read_bytes()
+                      if secret in data:
+                          if path.suffix.lower() in ('.log','.txt','.json','.ips'):
+                              path.write_bytes(data.replace(secret,b'[REDACTED]'))
+                          else:
+                              path.unlink()
+          PY_SANITIZE
       - name: Upload bounded diagnostics only
         if: always()
         uses: actions/upload-artifact@v4

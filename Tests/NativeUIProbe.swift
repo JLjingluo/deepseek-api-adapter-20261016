@@ -219,6 +219,55 @@ final class CaptureTests: XCTestCase {
         #endif
     }
     #if DSAPI_LIVE_UI
+    func testNativeDirectAPISetup() throws {
+        let app=openNativeApp(); openAPISettings(app)
+        let key=app.secureTextFields["API Key"].firstMatch
+        XCTAssertTrue(reveal(app,key)); XCTAssertTrue(key.isEnabled)
+        key.press(forDuration:1.2); _=dismissKeyboardHelp(app)
+        let paste=app.menuItems["Paste"].firstMatch.exists ? app.menuItems["Paste"].firstMatch : app.buttons["Paste"].firstMatch
+        XCTAssertTrue(paste.waitForExistence(timeout:5)); paste.tap()
+        let allow=XCUIApplication(bundleIdentifier:"com.apple.springboard").buttons["Allow Paste"].firstMatch
+        if allow.exists && allow.isHittable { allow.tap() }
+        // Never type, print, compare, or capture the actual credential in XCTest.
+        XCTAssertFalse(((key.value as? String) ?? "").isEmpty)
+        if app.keyboards.firstMatch.exists { key.typeText("\n") }
+        let base=app.textFields["Base URL"].firstMatch
+        XCTAssertTrue(reveal(app,base,up:false)); base.tap()
+        let oldBase=(base.value as? String) ?? ""
+        base.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:oldBase.count)+"https://api.deepseek.com/v1\n")
+        let model=app.textFields["Model"].firstMatch; XCTAssertTrue(reveal(app,model)); model.tap()
+        let oldModel=(model.value as? String) ?? ""
+        model.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:oldModel.count)+"deepseek-chat\n")
+        let enabled=app.switches["DSAPI.Enabled"].firstMatch; XCTAssertTrue(reveal(app,enabled,up:false))
+        if (enabled.value as? String) != "1" { enabled.tap() }
+        app.buttons["DSAPI.Save"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout:15))
+        XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","Restart")).firstMatch.exists,"Real Keychain save did not reach restart confirmation")
+        app.alerts.buttons.firstMatch.tap()
+        app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
+        // Re-open the settings page after a genuine process relaunch. The key
+        // field now comes from the production Security.framework implementation.
+        openAPISettings(app)
+        let ready=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in app.buttons["DSAPI.Save"].firstMatch.isEnabled },object:app)
+        XCTAssertEqual(XCTWaiter.wait(for:[ready],timeout:15),.completed)
+        XCTAssertFalse(((app.secureTextFields["API Key"].firstMatch.value as? String) ?? "").isEmpty,"Saved key was not read back after relaunch")
+        app.buttons["DSAPI.Cancel"].tap()
+        // The original settings sheet is underneath API settings.
+        if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
+        app.terminate()
+        let chat=openNativeApp()
+        let input=try XCTUnwrap(chat.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
+        enterPrompt("只回复：连接验证成功",into:input,in:chat)
+        chat.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
+        let response=chat.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","连接验证成功","连接验证成功")).allElementsBoundByIndex
+        // The submitted question also contains the marker, so require a second
+        // rendered element and wait for the native read-aloud control.
+        let read=chat.buttons["DSAPI.ReadAloud"].firstMatch
+        XCTAssertTrue(read.waitForExistence(timeout:90),"Direct API text request did not complete")
+        XCTAssertTrue(response.count>=2)
+        capture(chat,"direct-official-text-after-keychain-restart")
+        try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
+    }
     func testNativeLiveAPIImage() throws {
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
     }

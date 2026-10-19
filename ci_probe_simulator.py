@@ -56,7 +56,10 @@ def capture_startup_threads():
 
 def launch_application(device, bundle):
     args = ['xcrun', 'simctl', 'launch', '--terminate-running-process', device, bundle]
-    process = subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    child_env=os.environ.copy()
+    if os.environ.get('PROBE_UI_TEST_FOCUS')=='direct':
+        child_env['SIMCTL_CHILD_DSAPI_TEST_API_KEY']=os.environ.get('TEST_API_KEY','')
+    process = subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=child_env)
     try:
         output, _ = process.communicate(timeout=8)
     except subprocess.TimeoutExpired:
@@ -175,9 +178,9 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage', 'guest', 'options', 'history'):
+    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage', 'guest', 'options', 'history', 'direct'):
         raise RuntimeError('Unknown native test focus')
-    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage', 'guest':'testNativeGuest','options':'testNativeAPIOptions','history':'testNativeZCloudHistory'}.get(focus)
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage', 'guest':'testNativeGuest','options':'testNativeAPIOptions','history':'testNativeZCloudHistory','direct':'testNativeDirectAPISetup'}.get(focus)
     target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
@@ -186,7 +189,7 @@ def collect_ui_observations(device):
     conditions=[]
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')
-    if report.get('live_api_proxy'): conditions.append('DSAPI_LIVE_UI')
+    if report.get('live_api_proxy') or report.get('direct_live_api'): conditions.append('DSAPI_LIVE_UI')
     if focus=='guest':
         conditions.append('DSAPI_GUEST_UI')
         if not report.get('startup_api_mode'): conditions.append('DSAPI_GUEST_ORIGINAL')
@@ -242,10 +245,12 @@ def probe():
     run(['xcrun', 'simctl', 'boot', device])
     run(['xcrun', 'simctl', 'bootstatus', device, '-b'], timeout=240)
     root.mkdir(exist_ok=True)
-    report['live_api_proxy']=os.environ.get('PROBE_LIVE_API')=='true'
-    if report['live_api_proxy'] and not os.environ.get('TEST_API_KEY'): raise RuntimeError('Missing temporary live test secret')
+    report['direct_live_api']=os.environ.get('PROBE_UI_TEST_FOCUS')=='direct'
+    report['live_api_proxy']=os.environ.get('PROBE_LIVE_API')=='true' and not report['direct_live_api']
+    if (report['live_api_proxy'] or report['direct_live_api']) and not os.environ.get('TEST_API_KEY'): raise RuntimeError('Missing temporary live test secret')
     if adapter_enabled and os.environ.get('PROBE_MOCK_API') == 'true':
         from ci_mock_api import start_mock_api
+        if report['direct_live_api']: os.environ['PROBE_LIVE_API']='false'
         server, base_url = start_mock_api(root, diagnostics, device, run)
         report['mock_api_base_url'] = base_url
     with zipfile.ZipFile(sys.argv[1]) as package:
@@ -338,10 +343,12 @@ def probe():
     preferences.parent.mkdir(parents=True,exist_ok=True)
     values=plistlib.loads(preferences.read_bytes()) if preferences.exists() else {}
     values['DSAPIAdapter.configuration.v1']={'enabled':startup_mode=='api'}
+    values['DSAPIAdapter.directLiveTest']=report['direct_live_api']
     values['DSAPIAdapter.probeGuestContext']=os.environ.get('PROBE_UI_TEST_FOCUS')=='guest'
     if report.get('mock_api_base_url'):
         values['DSAPIAdapter.localTestFixture']={'baseURL':report['mock_api_base_url']}
-        values['DSAPIAdapter.configuration.v1'].update({'baseURL':report['mock_api_base_url'],'model':'ci-mock-model','timeout':180,'requestUsage':True})
+        if not report['direct_live_api']:
+            values['DSAPIAdapter.configuration.v1'].update({'baseURL':report['mock_api_base_url'],'model':'ci-mock-model','timeout':180,'requestUsage':True})
     preferences.write_bytes(plistlib.dumps(values))
     report['startup_api_mode']=startup_mode=='api'
     launch = launch_application(device, bundle)

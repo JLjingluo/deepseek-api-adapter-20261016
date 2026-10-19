@@ -151,6 +151,14 @@ static void DSPresentAPIProbe(void) {
     if (factory) [root presentViewController:factory([UIFont preferredFontForTextStyle:UIFontTextStyleBody]) animated:NO completion:nil];
 }
 static void DSPrepareMockConfiguration(void) {
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"DSAPIAdapter.directLiveTest"]) {
+        // Only the separate initial smoke launch receives this process variable.
+        // XCTest pastes it through the real secure text field; no read/save hook.
+        const char *key=getenv("DSAPI_TEST_API_KEY");
+        if (key && key[0]) { UIPasteboard.generalPasteboard.string=[NSString stringWithUTF8String:key]; unsetenv("DSAPI_TEST_API_KEY"); }
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"DSAPIAdapter.testKeychainBypassed"];
+        return;
+    }
     const char *base = getenv("DSAPI_TEST_BASE_URL");
     NSString *baseURL=base ? [NSString stringWithUTF8String:base] : [NSUserDefaults.standardUserDefaults dictionaryForKey:@"DSAPIAdapter.localTestFixture"][@"baseURL"];
     if (!baseURL || ![[NSURL URLWithString:baseURL].host isEqual:@"127.0.0.1"]) return;

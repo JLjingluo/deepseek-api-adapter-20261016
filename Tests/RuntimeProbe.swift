@@ -135,6 +135,8 @@ public func runRuntimeProbe() {
         }
     }
     let report: [String: Any] = ["scope": "simulator-only fixture and view observation",
+        "direct_live_test": UserDefaults.standard.bool(forKey:"DSAPIAdapter.directLiveTest"),
+        "keychain_bypassed": UserDefaults.standard.bool(forKey:"DSAPIAdapter.testKeychainBypassed"),
         "bootstrap": UserDefaults.standard.string(forKey: "DSAPIAdapter.bootstrapStatus") ?? "not reported",
         "swift_upload_errors": UserDefaults.standard.array(forKey:"DSAPIAdapter.probeSwiftUploadErrors") ?? [],
         "swift_error_hook_installed": UserDefaults.standard.bool(forKey:"DSAPIAdapter.probeSwiftErrorHookInstalled"),
