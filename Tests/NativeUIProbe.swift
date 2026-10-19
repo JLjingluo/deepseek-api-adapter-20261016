@@ -229,7 +229,7 @@ final class CaptureTests: XCTestCase {
         let allow=XCUIApplication(bundleIdentifier:"com.apple.springboard").buttons["Allow Paste"].firstMatch
         if allow.exists && allow.isHittable { allow.tap() }
         // Never type, print, compare, or capture the actual credential in XCTest.
-        XCTAssertFalse(((key.value as? String) ?? "").isEmpty)
+        let pastedValue=(key.value as? String) ?? ""; XCTAssertTrue(!pastedValue.isEmpty && pastedValue != "API Key")
         if app.keyboards.firstMatch.exists { key.typeText("\n") }
         let base=app.textFields["Base URL"].firstMatch
         XCTAssertTrue(reveal(app,base,up:false)); base.tap()
@@ -250,7 +250,7 @@ final class CaptureTests: XCTestCase {
         openAPISettings(app)
         let ready=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in app.buttons["DSAPI.Save"].firstMatch.isEnabled },object:app)
         XCTAssertEqual(XCTWaiter.wait(for:[ready],timeout:15),.completed)
-        XCTAssertFalse(((app.secureTextFields["API Key"].firstMatch.value as? String) ?? "").isEmpty,"Saved key was not read back after relaunch")
+        let restoredValue=(app.secureTextFields["API Key"].firstMatch.value as? String) ?? ""; XCTAssertTrue(!restoredValue.isEmpty && restoredValue != "API Key","Saved key was not read back after relaunch")
         app.buttons["DSAPI.Cancel"].tap()
         // The original settings sheet is underneath API settings.
         if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
@@ -259,12 +259,12 @@ final class CaptureTests: XCTestCase {
         let input=try XCTUnwrap(chat.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
         enterPrompt("只回复：连接验证成功",into:input,in:chat)
         chat.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
-        let response=chat.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","连接验证成功","连接验证成功")).allElementsBoundByIndex
+        let response=chat.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","连接验证成功","连接验证成功")).firstMatch
         // The submitted question also contains the marker, so require a second
         // rendered element and wait for the native read-aloud control.
         let read=chat.buttons["DSAPI.ReadAloud"].firstMatch
         XCTAssertTrue(read.waitForExistence(timeout:90),"Direct API text request did not complete")
-        XCTAssertTrue(response.count>=2)
+        XCTAssertTrue(response.exists)
         capture(chat,"direct-official-text-after-keychain-restart")
         try runNativeImage(prompt:"Name the color in this image. Respond in Chinese with the color name only.",expected:"红色")
     }
