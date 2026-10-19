@@ -122,9 +122,10 @@ def sign_simulator_app(app, entitlement_path):
     for extension in sorted(app.rglob('*.appex'), key=lambda p: len(p.parts), reverse=True):
         signing_path=entitlement_path
         values=plistlib.loads(entitlement_path.read_bytes())
-        if values.get('application-identifier'):
+        if values.get('application-identifier') or values.get('com.apple.application-identifier'):
             extension_id=plistlib.loads((extension/'Info.plist').read_bytes())['CFBundleIdentifier']
-            values['application-identifier']='DSAPITEST0.'+extension_id
+            identity_key='application-identifier' if values.get('application-identifier') else 'com.apple.application-identifier'
+            values[identity_key]='DSAPITEST0.'+extension_id
             signing_path=extension.parent/(extension.name+'.entitlements.plist')
             signing_path.write_bytes(plistlib.dumps(values))
         run(['codesign', '--force', '--sign', '-', '--deep', '--entitlements', str(signing_path), str(extension)])
@@ -295,10 +296,8 @@ def probe():
     # be granted by this ad-hoc test signature. Do not copy them into it.
     entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
     if report.get('direct_live_api'):
-        # Real Security.framework access needs an application identifier and a
-        # matching default group, just like a correctly signed device install.
-        entitlements['application-identifier']='DSAPITEST0.'+bundle
-        entitlements['keychain-access-groups']=['DSAPITEST0.'+bundle]
+        from ci_keychain_preflight import select_keychain_entitlements
+        entitlements=select_keychain_entitlements(device,root,diagnostics,run,bundle)
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
@@ -362,7 +361,7 @@ def probe():
     report['startup_api_mode']=startup_mode=='api'
     launch = launch_application(device, bundle)
     report['signing_attempts'] = [{'entitlements': entitlements, 'launch_exit_code': launch.returncode}]
-    if launch.returncode and not report.get('launch_timed_out'):
+    if launch.returncode and not report.get('launch_timed_out') and not report.get('direct_live_api'):
         # One controlled comparison: no entitlements. The device get-task-allow
         # entitlement was rejected by host AMFI in the previous investigation.
         (diagnostics/'launch-sandbox.txt').write_text(launch.stdout)
