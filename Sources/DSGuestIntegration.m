@@ -151,37 +151,66 @@ static UILabel *firstLabel(UIView *view) {
     if ([view isKindOfClass:UILabel.class] && ((UILabel *)view).text.length) return (UILabel *)view;
     for (UIView *child in view.subviews) { UILabel *label=firstLabel(child); if (label) return label; } return nil;
 }
+// Mirror the original footer's geometry rather than giving the API row its own
+// button configuration/insets. Both rows belong to the same sidebar container.
+static UIImageView *firstImage(UIView *view) {
+    if ([view isKindOfClass:UIImageView.class] && !view.hidden && view.bounds.size.width>=20) return (UIImageView *)view;
+    for (UIView *child in view.subviews) { UIImageView *image=firstImage(child); if (image) return image; }
+    return nil;
+}
 static void layoutSidebar(id self,SEL selector) {
     if (sidebarLayout) sidebarLayout(self,selector);
     UIViewController *controller=self;
     UIView *footer=find(controller.view,@"FooterView"); if (!footer || !footer.superview) return;
-    if (DSAPIIsLocalGuest()) { UILabel *name=firstLabel(footer); if (name && ![name.text isEqual:DSAPILocalized(@"guest")]) name.text=DSAPILocalized(@"guest"); }
+    UILabel *label=firstLabel(footer);
+    if (DSAPIIsLocalGuest() && label && ![label.text isEqual:DSAPILocalized(@"guest")]) label.text=DSAPILocalized(@"guest");
     BOOL enabled=[DSAPIConfiguration loadConfigurationWithoutAPIKey].showAPIInChat;
     UIButton *button=objc_getAssociatedObject(self,&DSSidebarAPIKey);
     if (!button && enabled) {
-        button=[UIButton buttonWithType:UIButtonTypeSystem]; button.accessibilityIdentifier=@"DSAPI.ConversationAPI";
+        button=[UIButton buttonWithType:UIButtonTypeCustom]; button.accessibilityIdentifier=@"DSAPI.ConversationAPI";
+        button.isAccessibilityElement=YES;
         [button addTarget:self action:NSSelectorFromString(@"dsapi_openAPI") forControlEvents:UIControlEventTouchUpInside];
-        [controller.view addSubview:button]; objc_setAssociatedObject(self,&DSSidebarAPIKey,button,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        UIImageView *icon=[UIImageView new]; icon.tag=8101; icon.contentMode=UIViewContentModeCenter; icon.clipsToBounds=YES;
+        UILabel *title=[UILabel new]; title.tag=8102;
+        UIImageView *accessory=[UIImageView new]; accessory.tag=8103; accessory.contentMode=UIViewContentModeScaleAspectFit;
+        for (UIView *child in @[icon,title,accessory]) { child.userInteractionEnabled=NO; child.isAccessibilityElement=NO; [button addSubview:child]; }
+        objc_setAssociatedObject(self,&DSSidebarAPIKey,button,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     button.hidden=!enabled;
+    // Use the native footer's parent so its clipping, sidebar transition and
+    // safe-area treatment also apply to the added row.
+    if (button && button.superview!=footer.superview) [footer.superview insertSubview:button belowSubview:footer];
     UICollectionView *list=(UICollectionView *)find(controller.view,@"UICollectionView");
     if (list && !objc_getAssociatedObject(list,&DSBaseInsetKey)) objc_setAssociatedObject(list,&DSBaseInsetKey,[NSValue valueWithUIEdgeInsets:list.contentInset],OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    CGFloat height=MAX(48,MIN(60,footer.bounds.size.height));
+    CGFloat height=footer.bounds.size.height;
+    if (height<=0) return;
     if (list) {
         UIEdgeInsets inset=[objc_getAssociatedObject(list,&DSBaseInsetKey) UIEdgeInsetsValue]; inset.bottom+=enabled ? height : 0;
         if (!UIEdgeInsetsEqualToEdgeInsets(list.contentInset,inset)) list.contentInset=inset;
+        list.verticalScrollIndicatorInsets=inset;
     }
     if (!enabled) return;
-    CGRect rect=[footer.superview convertRect:footer.frame toView:controller.view];
-    button.frame=CGRectMake(rect.origin.x,rect.origin.y-height,rect.size.width,height);
-    UILabel *label=firstLabel(footer); UIFont *font=label.font ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    UIButtonConfiguration *style=UIButtonConfiguration.plainButtonConfiguration; style.title=DSAPILocalized(@"api");
-    style.image=[UIImage systemImageNamed:@"network"]; style.imagePadding=12; style.contentInsets=NSDirectionalEdgeInsetsMake(10,16,10,16);
-    style.baseForegroundColor=label.textColor ?: UIColor.labelColor;
-    style.titleTextAttributesTransformer=^NSDictionary *(NSDictionary *attributes) { NSMutableDictionary *copy=[attributes mutableCopy]; copy[NSFontAttributeName]=font; return copy; };
-    button.configuration=style; button.contentHorizontalAlignment=UIControlContentHorizontalAlignmentLeft;
-    button.backgroundColor=footer.backgroundColor ?: controller.view.backgroundColor ?: UIColor.systemBackgroundColor;
-    [controller.view bringSubviewToFront:button];
+    button.frame=CGRectOffset(footer.frame,0,-height);
+    button.backgroundColor=footer.backgroundColor ?: UIColor.clearColor;
+    button.accessibilityLabel=DSAPILocalized(@"api");
+    UILabel *title=[button viewWithTag:8102];
+    title.text=DSAPILocalized(@"api"); title.font=label.font ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    title.textColor=label.textColor ?: UIColor.labelColor; title.adjustsFontSizeToFitWidth=NO; title.lineBreakMode=NSLineBreakByTruncatingTail;
+    CGRect titleRect=label ? [label convertRect:label.bounds toView:footer] : CGRectMake(64,0,MAX(0,footer.bounds.size.width-104),height);
+    title.frame=titleRect;
+    UIImageView *originalIcon=firstImage(footer), *icon=[button viewWithTag:8101];
+    CGRect iconRect=originalIcon ? [originalIcon convertRect:originalIcon.bounds toView:footer] : CGRectMake(16,(height-32)/2,32,32);
+    icon.frame=iconRect; icon.layer.cornerRadius=MIN(iconRect.size.width,iconRect.size.height)/2;
+    icon.backgroundColor=UIColor.tertiarySystemFillColor; icon.tintColor=UIColor.secondaryLabelColor;
+    icon.image=[UIImage systemImageNamed:@"network" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:MIN(iconRect.size.width,iconRect.size.height)*0.58 weight:UIImageSymbolWeightRegular]];
+    // Preserve the trailing action's location and weight, without copying the
+    // account avatar or any account-specific text into the API shortcut.
+    UIImageView *accessory=[button viewWithTag:8103];
+    accessory.image=[UIImage systemImageNamed:@"ellipsis" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightSemibold]];
+    accessory.tintColor=UIColor.tertiaryLabelColor;
+    CGFloat trailing=MAX(CGRectGetMaxX(titleRect)+12,footer.bounds.size.width-48);
+    accessory.frame=CGRectMake(trailing,(height-24)/2,24,24);
+    title.frame=CGRectMake(titleRect.origin.x,titleRect.origin.y,MAX(0,trailing-12-titleRect.origin.x),titleRect.size.height);
 }
 static void layoutFooter(id self,SEL selector) {
     if (footerLayout) footerLayout(self,selector);

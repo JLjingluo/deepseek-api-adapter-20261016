@@ -51,7 +51,11 @@ final class CaptureTests: XCTestCase {
         app.terminate(); app.launch(); XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
         app.buttons["open_sidebar"].tap()
         let entry=app.buttons["DSAPI.ConversationAPI"].firstMatch
-        XCTAssertTrue(entry.waitForExistence(timeout:10)); XCTAssertTrue(entry.isHittable); capture(app,"sidebar-api-and-account"); entry.tap()
+        XCTAssertTrue(entry.waitForExistence(timeout:10)); XCTAssertTrue(entry.isHittable)
+        let accountAvatar=app.images["sidebar/userAvatar"].firstMatch
+        XCTAssertTrue(accountAvatar.exists)
+        XCTAssertLessThanOrEqual(entry.frame.maxY,accountAvatar.frame.minY+8,"API row overlaps the original account row")
+        capture(app,"sidebar-api-and-account"); entry.tap()
         XCTAssertTrue(app.switches["DSAPI.Enabled"].firstMatch.waitForExistence(timeout:10))
         let automatic=app.switches["DSAPI.AutomaticModels"].firstMatch
         XCTAssertTrue(reveal(app,automatic))
