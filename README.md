@@ -1,19 +1,15 @@
-# DeepSeek 2.6.2 — optional API chat, test 2
+# DeepSeek 2.6.2 — optional API chat, Test 2.1
 
-[Download the complete unsigned test IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/download/candidate-60/DeepSeek-API-2.6.2-Test2-unsigned.ipa). Sign it yourself; use the same bundle identifier and signing configuration when updating to preserve local conversations.
+[Download the complete unsigned IPA](https://github.com/JLjingluo/deepseek-api-adapter-20261016/releases/download/candidate-62/DeepSeek-API-2.6.2-Test2.1-unsigned.ipa). Sign it yourself. Preserve the bundle identifier and signing configuration when upgrading to keep local data.
 
-This build preserves the original login/account UI and adds optional OpenAI-compatible API settings, a local Guest entry and the approved sidebar shortcut. API mode defaults off on clean installations. Choose a provider, enter your own key, enable API, save, close the app and reopen it.
+Preserves the original login/account UI and adds optional OpenAI-compatible API settings in the native settings list, Guest entry and the approved sidebar shortcut. API mode defaults off on clean installations. Choose a provider, enter your own key, enable API, save and fully reopen the application.
 
-The build adds actionable errors for credential, HTTP, DNS, offline, TLS, timeout and stream failures, plus saved-connection testing and sanitized diagnostic copying inside API Settings. Keychain writes are checked by reading back the saved value; no keys or chat content are stored in diagnostics. Provider presets, model discovery/manual entry, optional thinking model/effort, timeout, system prompt and usage tracking remain available.
+Includes actionable API errors, verified Keychain writes, saved-connection testing and sanitized diagnostic copying. Fixes native thumbnails for local API image attachments without changing the image UI or intercepting original CDN files.
 
-Exact packaged adapter acceptance: native suite 86 **10/10**, HTTP/clipboard UI probe 85 **passed**, real Keychain + restart + direct official API text/image probe 91 **passed**, official production-client suite 5 **8/8**. Probe 91 uses the real secure input and Security.framework methods with a locally signed simulator application, without credential replacement or API forwarding. All provider traffic in that probe targets api.deepseek.com.
+Exact-package acceptance: **10 native regression scenarios**, nine passed in run 93 and cancellation revalidated in focused run 97 after correcting the test's placeholder-based composer lookup, native HTTP/copy probe 96 **passed**, real Keychain/save/restart/direct official text and image probe 95 **passed**. Both image runs require actual red thumbnail pixels in screenshots. Production client suite 5 passed **8/8**; its client/config/SSE sources are unchanged. All component suites and package integrity checks passed.
 
-Probe 89 passed secure storage, the required restart and the direct connection check, but timed out on an extra second cold launch; that probe is recorded as failed. Probe 90 also passed saved/restarted connectivity but failed to return from Settings because the automation used a stale navigation identifier. It is not counted as passed. Probe 91 follows the required save/restart flow and returns through the original settings close control for chat acceptance. No universal repeated-launch guarantee is inferred.
+Physical iPhone installation with the user's signing certificate/network remains unverified. A prior extra simulator cold launch timed out; arbitrary repeated-launch stability is not claimed. See [ACCEPTANCE.md](ACCEPTANCE.md) for evidence and limits.
 
-**The user's original physical-device failure has not been directly observed with their signing certificate and network.** Simulator passes do not establish physical-iPhone acceptance. If the device still fails, copy the detailed error or open API Settings → Latest request details. See [ACCEPTANCE.md](ACCEPTANCE.md) for exact scope and signing limitations.
+Original history needs valid original login; API replies stay local. Image/UTF-8 attachments and manual system TTS are supported. All original search, sharing, voice input, automatic reading, widgets and attachment formats are not fully adapted. Full original feature/UI equivalence and a bug-free application are not claimed.
 
-The image API reply is verified, but its chat thumbnail is still gray in the captured screenshot; final thumbnail rendering is not accepted yet.
-
-Original-account history requires valid original login. API continuation is local only and does not upload replies to the official cloud. Image/UTF-8 attachments and manual Apple-system-voice reading are supported; all original search, sharing, voice input, automatic reading, widgets and attachment formats are not fully adapted. Full UI/feature equivalence and a bug-free application are not claimed.
-
-IPA SHA-256: `20b1fe212f914f9068b6c9267f0296db399a353dde87bc591d27efc61617579d`. No provided credentials or test observers are bundled.
+SHA-256: `8f34202fc1f57f704300f229d4a38afb2a51915c333413018cbfb8ea0d2b37b6`. No supplied credentials or test observer is bundled.
