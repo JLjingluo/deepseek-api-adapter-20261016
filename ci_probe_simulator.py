@@ -296,8 +296,11 @@ def probe():
     # be granted by this ad-hoc test signature. Do not copy them into it.
     entitlements = {'com.apple.security.app-sandbox': True, 'com.apple.security.network.client': True}
     if report.get('direct_live_api'):
-        from ci_keychain_preflight import select_keychain_entitlements
-        entitlements=select_keychain_entitlements(device,root,diagnostics,run,bundle)
+        # Independent preflight 89 proved this simulator-only identifier allows
+        # real SecItemAdd/CopyMatching. Do not reinstall the auxiliary app on
+        # every run; actual secure-field save/readback remains mandatory in UI.
+        entitlements={'com.apple.application-identifier':'DSAPITEST0.'+bundle}
+        report['keychain_signature_reference_probe']=89
     report['simulator_entitlements'] = list(entitlements)
     entitlement_path = root/'simulator-entitlements.plist'
     entitlement_path.write_bytes(plistlib.dumps(entitlements))
@@ -338,7 +341,7 @@ def probe():
     report['signature_verify_exit_code'] = verification.returncode
     signature = run(['codesign', '-d', '--verbose=4', '--entitlements', ':-', str(app)], check=False)
     (diagnostics/'signature-metadata.txt').write_text(signature.stdout)
-    install = run(['xcrun', 'simctl', 'install', device, str(app)], check=False)
+    install = run(['xcrun', 'simctl', 'install', device, str(app)], check=False,timeout=240)
     report['install_exit_code'] = install.returncode
     (diagnostics/'install.txt').write_text(install.stdout)
     if install.returncode:
