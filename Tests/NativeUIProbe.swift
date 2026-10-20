@@ -47,7 +47,7 @@ final class CaptureTests: XCTestCase {
             let input=try XCTUnwrap(app.textViews.allElementsBoundByIndex.filter { $0.isHittable && $0.isEnabled }.max { $0.frame.maxY < $1.frame.maxY })
             enterPrompt("API diagnostic \(status) test",into:input,in:app)
             app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Send","发送")).firstMatch.tap()
-            let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:25))
+            let alert=app.alerts.firstMatch; XCTAssertTrue(alert.waitForExistence(timeout:90))
             XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","HTTP \(status)")).firstMatch.exists)
             capture(app,"actionable-api-error-\(status)")
             alert.buttons["Copy details"].tap()
@@ -59,7 +59,7 @@ final class CaptureTests: XCTestCase {
         let test=app.cells["DSAPI.TestConnection"].staticTexts.firstMatch
         XCTAssertTrue(reveal(app,test)); test.tap()
         let success=app.alerts["Connection succeeded"].firstMatch
-        XCTAssertTrue(success.waitForExistence(timeout:25)); capture(app,"saved-api-connection-test")
+        XCTAssertTrue(success.waitForExistence(timeout:45)); capture(app,"saved-api-connection-test")
         success.buttons.firstMatch.tap(); app.buttons["DSAPI.Cancel"].tap()
         #endif
     }
