@@ -36,8 +36,17 @@ static NSMutableDictionary<NSString *,DSCompatibilityProtocol *> *DSActiveStream
     NSString *path=request.URL.path;
     // Authentication, account settings and all original services stay native.
     // API mode owns its entire chat namespace, including unsupported chat routes.
-    return (DSAPIIsEnabled() || DSAPIHasPendingModeChange() || DSAPIIsLocalGuest()) && ![NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request] &&
-        [request.URL.host.lowercaseString isEqual:@"chat.deepseek.com"] &&
+    BOOL active=DSAPIIsEnabled() || DSAPIHasPendingModeChange() || DSAPIIsLocalGuest();
+    BOOL direct=[NSURLProtocol propertyForKey:@"DSAPI.DirectAPI" inRequest:request]!=nil;
+    NSString *host=request.URL.host.lowercaseString;
+    // The native image loader prepends its file-service base to signed_path.
+    // Keep its UI/model unchanged and serve only our synthetic local files,
+    // including URLs composed from older stored absolute signed paths.
+    if ([host isEqual:@"files.deepseeksvc.com"])
+        return active && !direct && ([path hasPrefix:@"/apihttps://chat.deepseek.com/api/v0/file/local/api-file-"] ||
+            [path hasPrefix:@"/api/v0/file/local/api-file-"]);
+    return active && !direct &&
+        [host isEqual:@"chat.deepseek.com"] &&
         ([path hasPrefix:@"/api/v0/chat/"] || [path hasPrefix:@"/api/v0/chat_session/"] || [path hasPrefix:@"/api/v0/file/"] || [path hasPrefix:@"/api/v0/guest/chat/"] || [path isEqual:@"/api/v0/guest/available"] || [path isEqual:@"/api/v0/users/create_guest_challenge"]);
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }

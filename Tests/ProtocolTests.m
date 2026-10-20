@@ -204,6 +204,14 @@ int main(int argc,const char *argv[]) {
         [body appendData:png]; [body appendData:[@"\r\n--image-test--\r\n" dataUsingEncoding:NSUTF8StringEncoding]]; upload.HTTPBody=body;
         NSError *fileError=nil; NSDictionary *file=[DSAttachmentStore.shared importRequest:upload error:&fileError];
         check(file!=nil && !fileError,@"image imported locally without original auth or PoW headers");
+        for (NSString *prefix in @[@"https://files.deepseeksvc.com/apihttps://chat.deepseek.com/api/v0/file/local/",@"https://files.deepseeksvc.com/api/v0/file/local/"]) {
+            NSURLRequest *preview=[NSURLRequest requestWithURL:[NSURL URLWithString:[prefix stringByAppendingString:file[@"id"]]]];
+            check([DSCompatibilityProtocol canInitWithRequest:preview],@"native CDN-composed local thumbnail is intercepted");
+            Capture *bytes=[Capture new];
+            [[[DSCompatibilityProtocol alloc] initWithRequest:preview cachedResponse:nil client:bytes] startLoading];
+            check(bytes.done && !bytes.error && [bytes.bytes isEqual:png],@"native thumbnail loader receives the actual original PNG bytes");
+        }
+        check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://files.deepseeksvc.com/api/official-private-image"]]],@"official CDN files remain native");
         Capture *withImage=request(@"/chat/completion",@{@"chat_session_id":sid,@"parent_message_id":assistant,@"prompt":@"看图",@"ref_file_ids":@[file[@"id"]]});
         check(!withImage.error,@"native image completion reaches the compatible API");
         NSArray *parts=retryPayload[@"messages"][[retryPayload[@"messages"] count]-1][@"content"];

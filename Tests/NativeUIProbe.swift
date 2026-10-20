@@ -364,7 +364,23 @@ final class CaptureTests: XCTestCase {
         let received=reply.waitForExistence(timeout:30)
         if !received { capture(app,"native-image-api-failure"); print("DSAPI_IMAGE_FAILURE_BEGIN\n"+app.debugDescription+"\nDSAPI_IMAGE_FAILURE_END") }
         XCTAssertTrue(received,"Native image did not reach the API as an image content part")
+        // The source image is a solid red square. A provider reply alone does
+        // not establish that the original chat thumbnail actually rendered.
+        let thumbnail=XCTNSPredicateExpectation(predicate:NSPredicate { _, _ in
+            guard let image=app.screenshot().image.cgImage else { return false }
+            let width=40,height=80
+            var pixels=[UInt8](repeating:0,count:width*height*4)
+            let redCount:Int=pixels.withUnsafeMutableBytes { buffer in
+                guard let context=CGContext(data:buffer.baseAddress,width:width,height:height,bitsPerComponent:8,bytesPerRow:width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue|CGBitmapInfo.byteOrder32Big.rawValue) else { return 0 }
+                context.draw(image,in:CGRect(x:0,y:0,width:CGFloat(width),height:CGFloat(height)))
+                let bytes=buffer.bindMemory(to:UInt8.self)
+                return stride(from:0,to:bytes.count,by:4).filter { bytes[$0]>200 && bytes[$0+1]<60 && bytes[$0+2]<60 }.count
+            }
+            return redCount>50
+        },object:app)
+        let rendered=XCTWaiter.wait(for:[thumbnail],timeout:15) == .completed
         capture(app,"native-image-api-reply")
+        XCTAssertTrue(rendered,"API received the image but the original chat thumbnail remained a placeholder")
     }
 
     @discardableResult private func reveal(_ app:XCUIApplication,_ element:XCUIElement,up:Bool=true) -> Bool {
