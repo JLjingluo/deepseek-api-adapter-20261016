@@ -183,14 +183,16 @@ def collect_ui_observations(device):
     project = create_project(root/'UIProbe')
     results = root/'UIResult.xcresult'
     focus = os.environ.get('PROBE_UI_TEST_FOCUS', 'all')
-    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage', 'guest', 'options', 'history', 'direct', 'errors'):
+    if focus not in ('', 'all', 'settings', 'regeneration', 'startup', 'switching', 'attachment', 'liveimage', 'guest', 'options', 'history', 'direct', 'errors', 'cancellation'):
         raise RuntimeError('Unknown native test focus')
-    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage', 'guest':'testNativeGuest','options':'testNativeAPIOptions','history':'testNativeZCloudHistory','direct':'testNativeDirectAPISetup','errors':'testNativeAPIErrors'}.get(focus)
+    selected = {'settings': 'testNativeSettings', 'regeneration': 'testNativeRegeneration', 'startup': 'testNativeApp', 'switching': 'testNativeServiceSwitching', 'attachment': 'testNativeAttachment', 'liveimage': 'testNativeLiveAPIImage', 'guest':'testNativeGuest','options':'testNativeAPIOptions','history':'testNativeZCloudHistory','direct':'testNativeDirectAPISetup','errors':'testNativeAPIErrors','cancellation':'testNativeCancellation'}.get(focus)
     target = 'NativeUIProbeUITests/CaptureTests' + ('/'+selected if selected else '')
     arguments = ['xcodebuild', '-project', str(project), '-scheme', 'NativeUIProbe',
         '-destination', 'platform=iOS Simulator,id='+device, '-derivedDataPath', str(root/'UIBuild'),
         '-resultBundlePath', str(results), '-only-testing:'+target,
         'test']
+    if focus=='cancellation':
+        arguments.insert(-1,'-only-testing:NativeUIProbeUITests/CaptureTests/testNativeApp')
     conditions=[]
     if adapter_enabled: conditions.append('DSAPI_ADAPTER_UI')
     if report.get('mock_api_base_url'): conditions.append('DSAPI_MOCK_UI')

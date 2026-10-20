@@ -434,12 +434,13 @@ final class CaptureTests: XCTestCase {
     func testNativeCancellation() throws {
         #if DSAPI_MOCK_UI
         let app = openExistingTestChat()
-        let followup=app.textViews.allElementsBoundByIndex.first {
-            $0.isHittable && $0.isEnabled && $0.frame.minY > app.frame.height*0.5 && (($0.value as? String) ?? "").isEmpty
-        }
-        XCTAssertNotNil(followup, "Native input could not be found for a second turn")
-        followup?.tap()
-        followup?.typeText("API cancellation test")
+        // UITextView may expose its placeholder as accessibility value. Select
+        // the visible native composer by structure, then verify actual entry.
+        let followup=app.textViews.allElementsBoundByIndex.filter {
+            $0.isHittable && $0.isEnabled && $0.frame.minY > app.frame.height*0.5
+        }.max { $0.frame.maxY < $1.frame.maxY }
+        let composer=try XCTUnwrap(followup,"Native input could not be found for a second turn")
+        enterPrompt("API cancellation test",into:composer,in:app)
         let send=app.buttons["Send"].firstMatch
         if send.exists && send.isHittable { send.tap() }
         else if let field=followup {
