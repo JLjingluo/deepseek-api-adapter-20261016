@@ -209,6 +209,8 @@ int main(int argc,const char *argv[]) {
             check([DSCompatibilityProtocol canInitWithRequest:preview],@"native CDN-composed local thumbnail is intercepted");
             Capture *bytes=[Capture new];
             [[[DSCompatibilityProtocol alloc] initWithRequest:preview cachedResponse:nil client:bytes] startLoading];
+            NSDate *previewDeadline=[NSDate dateWithTimeIntervalSinceNow:5];
+            while (!bytes.done && previewDeadline.timeIntervalSinceNow>0) [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
             check(bytes.done && !bytes.error && [bytes.bytes isEqual:png],@"native thumbnail loader receives the actual original PNG bytes");
         }
         check(![DSCompatibilityProtocol canInitWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://files.deepseeksvc.com/api/official-private-image"]]],@"official CDN files remain native");
